@@ -541,6 +541,7 @@ namespace AvgSellPrice
             int cachedPrice = GetCachedBasePrice(item);
             if (cachedPrice > 0)
             {
+                Plugin.Log?.LogInfo($"[AvgSellPrice] BASE cached {item.ShortName}: {cachedPrice}");
                 return cachedPrice;
             }
 
@@ -548,6 +549,7 @@ namespace AvgSellPrice
             int donorPrice = TryGetBasePriceFromEmptyIdenticalItem(item);
             if (donorPrice > 0)
             {
+                Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from donor {item.ShortName}: {donorPrice}");
                 CacheBasePrice(item, donorPrice);
                 return donorPrice;
             }
@@ -556,6 +558,7 @@ namespace AvgSellPrice
             int templatePrice = GetTemplateFallbackPrice(item);
             if (templatePrice > 0)
             {
+                Plugin.Log?.LogWarning($"[AvgSellPrice] BASE from template (CreditsPrice) {item.ShortName}: {templatePrice} - trader lookup failed!");
                 CacheBasePrice(item, templatePrice);
                 return templatePrice;
             }
@@ -564,10 +567,12 @@ namespace AvgSellPrice
             int traderPrice = GetAverageTraderPriceInternal(item);
             if (traderPrice > 0)
             {
+                Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from trader direct {item.ShortName}: {traderPrice}");
                 CacheBasePrice(item, traderPrice);
                 return traderPrice;
             }
 
+            Plugin.Log?.LogWarning($"[AvgSellPrice] BASE PRICE ZERO for {item.ShortName} ({GetTemplateIdSafe(item)})");
             return 0;
         }
         private static int TryGetBasePriceFromEmptyIdenticalItem(Item item)
@@ -745,25 +750,91 @@ namespace AvgSellPrice
 
             if (!Session.Profile.Examined(item))
             {
+                Plugin.Log?.LogWarning($"[AvgSellPrice] NOT EXAMINED: {item.ShortName} ({GetTemplateIdSafe(item)})");
                 return new List<TraderOffer>();
             }
 
-            if (item.Owner != null &&
-                (item.Owner.OwnerType == EOwnerType.RagFair || item.Owner.OwnerType == EOwnerType.Trader) &&
-                (item.StackObjectsCount > 1 || item.UnlimitedCount))
+            // Lav altid en klon med stack=1 FØR vi sender til trader.
+            // Klonen bruges kun til trader-opslag — Examined checker originalen ovenfor.
+            Item queryItem = item;
+            try
             {
-                item = item.CloneItem();
-                item.StackObjectsCount = 1;
-                item.UnlimitedCount = false;
+                Item clone = item.CloneItem();
+                clone.StackObjectsCount = 1;
+                clone.UnlimitedCount = false;
+
+                // Kopiér original item-id til klonen.
+                // GetUserItemPrice slår op via item-id internt — kloner får et nyt
+                // random id der ikke kendes af trader's assortment.
+                try
+                {
+                    FieldInfo idField = typeof(Item).GetField("Id",
+                        BindingFlags.Public | BindingFlags.Instance);
+                    if (idField == null)
+                        idField = typeof(Item).GetField("_id",
+                            BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (idField != null)
+                        idField.SetValue(clone, item.Id);
+                }
+                catch { }
+
+                // Ryd både grids og slots på klonen så trader ser et tomt item
+                if (clone is CompoundItem compound)
+                {
+                    // Ryd grids
+                    foreach (var grid in compound.Grids)
+                    {
+                        Type t = grid.GetType();
+                        while (t != null)
+                        {
+                            bool found = false;
+                            foreach (var field in t.GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public))
+                            {
+                                if (!field.FieldType.IsGenericType) continue;
+                                var val = field.GetValue(grid);
+                                var asDict = val as System.Collections.IDictionary;
+                                if (asDict != null) { asDict.Clear(); found = true; break; }
+                                var asList = val as System.Collections.IList;
+                                if (asList != null) { asList.Clear(); found = true; break; }
+                            }
+                            if (found) break;
+                            t = t.BaseType;
+                        }
+                    }
+
+                    // Ryd slots (soft armor, holster, osv.)
+                    foreach (var slot in compound.Slots)
+                    {
+                        try
+                        {
+                            if (slot.ContainedItem != null)
+                            {
+                                var slotType = slot.GetType();
+                                while (slotType != null)
+                                {
+                                    var field = slotType.GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public)
+                                        .FirstOrDefault(f => typeof(Item).IsAssignableFrom(f.FieldType));
+                                    if (field != null) { field.SetValue(slot, null); break; }
+                                    slotType = slotType.BaseType;
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+
+                queryItem = clone;
             }
+            catch { }
 
             return Session.Traders
                 .Where(t => t != null)
                 .Where(t => t.Settings != null)
                 .Where(t => !t.Settings.AvailableInRaid)
-                .Select(t => GetTraderOffer(item, t))
+                .Select(t => GetTraderOffer(queryItem, t))
                 .Where(o => o != null)
-                .OrderByDescending(o => o.Price * o.Course);
+                .OrderByDescending(o => o.Price * o.Course)
+                .ToList();
         }
 
         private static int GetAverageTraderPriceInternal(Item item)
