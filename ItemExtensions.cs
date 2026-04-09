@@ -371,6 +371,12 @@ namespace AvgSellPrice
                 return false;
             }
 
+            // Never count armor plates / armor inserts / built-in armor as "contents"
+            if (child is ArmorPlateItemClass)
+            {
+                return false;
+            }
+
             GClass3391 address = child.CurrentAddress as GClass3391;
 
             if (address == null || address.Slot == null)
@@ -386,6 +392,21 @@ namespace AvgSellPrice
             }
 
             if (slotName.Contains("armor"))
+            {
+                return false;
+            }
+
+            if (slotName.Contains("plate"))
+            {
+                return false;
+            }
+
+            if (slotName.Contains("insert"))
+            {
+                return false;
+            }
+
+            if (slotName.Contains("soft"))
             {
                 return false;
             }
@@ -510,38 +531,93 @@ namespace AvgSellPrice
         }
 
         private static int GetContainerBasePriceRobust(Item item)
-{
-    if (item == null)
-    {
-        return 0;
-    }
+        {
+            if (item == null)
+            {
+                return 0;
+            }
 
-    // 1. Cached base price is best if we already learned it earlier
-    int cachedPrice = GetCachedBasePrice(item);
-    if (cachedPrice > 0)
-    {
-        return cachedPrice;
-    }
+            // 1. Cached base price for this template
+            int cachedPrice = GetCachedBasePrice(item);
+            if (cachedPrice > 0)
+            {
+                return cachedPrice;
+            }
 
-    // 2. Template fallback is more stable for containers than trader price
-    // because filled rigs/backpacks often fail trader pricing or return 0
-    int templatePrice = GetTemplateFallbackPrice(item);
-    if (templatePrice > 0)
-    {
-        CacheBasePrice(item, templatePrice);
-        return templatePrice;
-    }
+            // 2. Try to learn base price from an empty identical item in player inventory
+            int donorPrice = TryGetBasePriceFromEmptyIdenticalItem(item);
+            if (donorPrice > 0)
+            {
+                CacheBasePrice(item, donorPrice);
+                return donorPrice;
+            }
 
-    // 3. Trader price as last fallback
-    int traderPrice = GetAverageTraderPriceInternal(item);
-    if (traderPrice > 0)
-    {
-        CacheBasePrice(item, traderPrice);
-        return traderPrice;
-    }
+            // 3. Template fallback
+            int templatePrice = GetTemplateFallbackPrice(item);
+            if (templatePrice > 0)
+            {
+                CacheBasePrice(item, templatePrice);
+                return templatePrice;
+            }
 
-    return 0;
-}
+            // 4. Direct trader lookup as last fallback
+            int traderPrice = GetAverageTraderPriceInternal(item);
+            if (traderPrice > 0)
+            {
+                CacheBasePrice(item, traderPrice);
+                return traderPrice;
+            }
+
+            return 0;
+        }
+        private static int TryGetBasePriceFromEmptyIdenticalItem(Item item)
+        {
+            if (item == null)
+            {
+                return 0;
+            }
+
+            string templateId = GetTemplateIdSafe(item);
+            if (string.IsNullOrEmpty(templateId))
+            {
+                return 0;
+            }
+
+            List<Item> allItems = GetAllPlayerItemsSafe();
+
+            foreach (Item candidate in allItems)
+            {
+                if (candidate == null || ReferenceEquals(candidate, item))
+                {
+                    continue;
+                }
+
+                string candidateTemplateId = GetTemplateIdSafe(candidate);
+                if (!string.Equals(candidateTemplateId, templateId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (!IsRealContainer(candidate))
+                {
+                    continue;
+                }
+
+                // Must be empty to represent base price only
+                if (HasChildren(candidate))
+                {
+                    continue;
+                }
+
+                int price = GetSingleItemPrice(candidate);
+                if (price > 0)
+                {
+                    return price;
+                }
+            }
+
+            return 0;
+        }
 
         private static int GetContainerBasePrice(Item item)
         {
