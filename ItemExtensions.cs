@@ -218,6 +218,11 @@ namespace AvgSellPrice
 
                 List<string> lines = new List<string>();
 
+                if (basePrice <= 0)
+                {
+                    basePrice = GetTemplateFallbackPrice(item);
+                }
+
                 if (basePrice > 0)
                 {
                     lines.Add(FormatPriceLine(null, basePrice));
@@ -505,34 +510,38 @@ namespace AvgSellPrice
         }
 
         private static int GetContainerBasePriceRobust(Item item)
-        {
-            if (item == null)
-            {
-                return 0;
-            }
+{
+    if (item == null)
+    {
+        return 0;
+    }
 
-            int traderPrice = GetAverageTraderPriceInternal(item);
-            if (traderPrice > 0)
-            {
-                CacheBasePrice(item, traderPrice);
-                return traderPrice;
-            }
+    // 1. Cached base price is best if we already learned it earlier
+    int cachedPrice = GetCachedBasePrice(item);
+    if (cachedPrice > 0)
+    {
+        return cachedPrice;
+    }
 
-            int cachedPrice = GetCachedBasePrice(item);
-            if (cachedPrice > 0)
-            {
-                return cachedPrice;
-            }
+    // 2. Template fallback is more stable for containers than trader price
+    // because filled rigs/backpacks often fail trader pricing or return 0
+    int templatePrice = GetTemplateFallbackPrice(item);
+    if (templatePrice > 0)
+    {
+        CacheBasePrice(item, templatePrice);
+        return templatePrice;
+    }
 
-            int templatePrice = GetTemplateFallbackPrice(item);
-            if (templatePrice > 0)
-            {
-                CacheBasePrice(item, templatePrice);
-                return templatePrice;
-            }
+    // 3. Trader price as last fallback
+    int traderPrice = GetAverageTraderPriceInternal(item);
+    if (traderPrice > 0)
+    {
+        CacheBasePrice(item, traderPrice);
+        return traderPrice;
+    }
 
-            return 0;
-        }
+    return 0;
+}
 
         private static int GetContainerBasePrice(Item item)
         {

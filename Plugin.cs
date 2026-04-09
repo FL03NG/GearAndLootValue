@@ -9,22 +9,42 @@ using UnityEngine;
 
 namespace AvgSellPrice
 {
-    [BepInPlugin("com.simon.approxsellprice", "Approx Sell Price", "3.5.1")]
+    [BepInPlugin("com.simon.approxsellprice", "Approx Sell Price", "3.6.0")]
     public class Plugin : BaseUnityPlugin
     {
+        internal static BepInEx.Logging.ManualLogSource Log;
+
         private void Awake()
         {
+            Log = Logger;
+            Log.LogInfo("Approx Sell Price Awake START");
+
             PluginConfig.Init(Config);
+            Log.LogInfo("PluginConfig.Init OK");
 
             new TraderPatch().Enable();
-            new ItemPatch().Enable();
-            new AmmoItemPatch().Enable();
-            new ThrowWeapItemPatch().Enable();
+            Log.LogInfo("TraderPatch enabled");
 
-            // GridItemViewTooltipPatch is intentionally NOT enabled.
-            // The price is shown through the item attribute system instead.
+            new ItemPatch().Enable();
+            Log.LogInfo("ItemPatch enabled");
+
+            new AmmoItemPatch().Enable();
+            Log.LogInfo("AmmoItemPatch enabled");
+
+            new ThrowWeapItemPatch().Enable();
+            Log.LogInfo("ThrowWeapItemPatch enabled");
+
+            new GridItemOnPointerEnterPatch().Enable();
+            Log.LogInfo("GridItemOnPointerEnterPatch enabled");
+
+            new GridItemOnPointerExitPatch().Enable();
+            Log.LogInfo("GridItemOnPointerExitPatch enabled");
+
+            new SimpleTooltipShowPatch().Enable();
+            Log.LogInfo("SimpleTooltipShowPatch enabled");
 
             StartCoroutine(DelayedPriceRefresh());
+            Log.LogInfo("DelayedPriceRefresh started");
         }
 
         private IEnumerator DelayedPriceRefresh()
