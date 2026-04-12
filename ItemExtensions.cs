@@ -1,4 +1,4 @@
-﻿using Comfort.Common;
+using Comfort.Common;
 using EFT;
 using EFT.InventoryLogic;
 using SPT.Reflection.Utils;
@@ -131,12 +131,22 @@ namespace AvgSellPrice
 
                 Base = () =>
                 {
+                    if (IsInTraderSellScreen())
+                    {
+                        return 0.01f;
+                    }
+
                     int price = GetDisplayMainPrice(item);
                     return price > 0 ? price : 0.01f;
                 },
 
                 StringValue = () =>
                 {
+                    if (IsInTraderSellScreen())
+                    {
+                        return string.Empty;
+                    }
+
                     string text = item.GetHoverPriceText();
 
                     if (string.IsNullOrEmpty(text))
@@ -150,6 +160,11 @@ namespace AvgSellPrice
 
                 FullStringValue = () =>
                 {
+                    if (IsInTraderSellScreen())
+                    {
+                        return string.Empty;
+                    }
+
                     string text = item.GetHoverPriceText();
 
                     if (string.IsNullOrEmpty(text))
@@ -176,84 +191,109 @@ namespace AvgSellPrice
                 return string.Empty;
             }
 
+            if (IsInTraderSellScreen())
+            {
+                return string.Empty;
+            }
+
             if (!HasChildren(item))
             {
-                int singlePrice = GetSingleItemPrice(item);
+                TraderOffer offer = GetConfiguredTraderOffer(item);
 
-                if (singlePrice <= 0)
+                if (offer == null || offer.Price <= 0)
                 {
                     return string.Empty;
                 }
 
-                return FormatPriceLine(null, singlePrice);
+                return FormatMainPriceWithOptionalTrader(offer.Name, offer.Price);
             }
 
             if (item is Weapon)
             {
-                int weaponPrice = GetSingleItemPrice(item);
+                TraderOffer weaponOffer = GetConfiguredTraderOffer(item);
 
-                if (weaponPrice <= 0)
+                if (weaponOffer == null || weaponOffer.Price <= 0)
                 {
                     return string.Empty;
                 }
 
-                return FormatPriceLine(null, weaponPrice);
+                return FormatMainPriceWithOptionalTrader(weaponOffer.Name, weaponOffer.Price);
             }
 
             if (IsRealContainer(item))
             {
                 int basePrice = GetContainerBasePriceRobust(item);
-                int contentsPrice = GetContentsTraderPrice(item);
-                int totalPrice = 0;
 
-                if (basePrice > 0)
+                if (basePrice <= 0)
                 {
-                    totalPrice += basePrice;
+                    return string.Empty;
                 }
+
+                int contentsPrice = GetContentsTraderPrice(item);
+                int totalPrice = basePrice;
 
                 if (contentsPrice > 0)
                 {
                     totalPrice += contentsPrice;
                 }
 
+                string traderName = GetConfiguredTraderName(item);
+
                 List<string> lines = new List<string>();
-
-                if (basePrice <= 0)
-                {
-                    basePrice = GetTemplateFallbackPrice(item);
-                }
-
-                if (basePrice > 0)
-                {
-                    lines.Add(FormatPriceLine(null, basePrice));
-                }
+                lines.Add(FormatMainPriceWithOptionalTrader(traderName, basePrice));
 
                 if (contentsPrice > 0)
                 {
-                    lines.Add(FormatPriceLine("Contents", contentsPrice));
-                }
-
-                if (basePrice > 0 && contentsPrice > 0)
-                {
-                    lines.Add(FormatPriceLine("Total", totalPrice));
-                }
-
-                if (lines.Count == 0)
-                {
-                    return string.Empty;
+                    lines.Add("Contents " + FormatPriceExternal(contentsPrice));
+                    lines.Add("Total " + FormatPriceExternal(totalPrice));
                 }
 
                 return string.Join(Environment.NewLine, lines);
             }
 
-            int fallbackPrice = GetSingleItemPrice(item);
+            TraderOffer fallbackOffer = GetConfiguredTraderOffer(item);
 
-            if (fallbackPrice <= 0)
+            if (fallbackOffer == null || fallbackOffer.Price <= 0)
             {
                 return string.Empty;
             }
 
-            return FormatPriceLine(null, fallbackPrice);
+            return FormatMainPriceWithOptionalTrader(fallbackOffer.Name, fallbackOffer.Price);
+        }
+
+        private static bool IsInTraderSellScreen()
+        {
+            if (!PluginConfig.HideTooltipInTraderSellScreen.Value)
+            {
+                return false;
+            }
+
+            try
+            {
+                object app = ClientAppUtils.GetMainApp();
+
+                if (app == null)
+                {
+                    return false;
+                }
+
+                string appTypeName = app.GetType().FullName ?? string.Empty;
+
+                if (appTypeName.IndexOf("Trading", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+
+                if (appTypeName.IndexOf("Trader", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
         }
 
         private static string FormatPriceLine(string prefix, int rawPrice)
@@ -282,6 +322,34 @@ namespace AvgSellPrice
             }
 
             return formattedPrice;
+        }
+
+        private static string FormatMainPriceWithOptionalTrader(string traderName, int rawPrice)
+        {
+            int price = ApplyMinimumPrice(rawPrice);
+
+            string formattedPrice = PluginConfig.PrecisePrice.Value
+                ? FormatPrecise(price)
+                : FormatPrice(price);
+
+            bool showAround = PluginConfig.ShowAroundPrefix.Value && !PluginConfig.PrecisePrice.Value;
+
+            if (!PluginConfig.ShowTraderNameInTooltip.Value || string.IsNullOrEmpty(traderName))
+            {
+                if (showAround)
+                {
+                    return "Around " + formattedPrice;
+                }
+
+                return formattedPrice;
+            }
+
+            if (showAround)
+            {
+                return traderName + " around " + formattedPrice;
+            }
+
+            return traderName + " " + formattedPrice;
         }
 
         private static int ApplyMinimumPrice(int rawPrice)
@@ -371,7 +439,6 @@ namespace AvgSellPrice
                 return false;
             }
 
-            // Never count armor plates / armor inserts / built-in armor as "contents"
             if (child is ArmorPlateItemClass)
             {
                 return false;
@@ -489,6 +556,43 @@ namespace AvgSellPrice
             return 0;
         }
 
+        private static int GetVerifiedContainerBasePrice(Item item)
+        {
+            string templateId = GetTemplateIdSafe(item);
+
+            if (string.IsNullOrEmpty(templateId))
+            {
+                return 0;
+            }
+
+            int price = VerifiedContainerPriceCache.GetPrice(templateId);
+
+            if (price > 0)
+            {
+                Plugin.Log?.LogInfo($"[AvgSellPrice] VERIFIED CACHE HIT {item.ShortName} ({templateId}) => {price}");
+            }
+
+            return price;
+        }
+
+        private static void StoreVerifiedContainerBasePrice(Item item, int price, string source)
+        {
+            if (item == null || price <= 0)
+            {
+                return;
+            }
+
+            string templateId = GetTemplateIdSafe(item);
+
+            if (string.IsNullOrEmpty(templateId))
+            {
+                return;
+            }
+
+            Plugin.Log?.LogInfo($"[AvgSellPrice] VERIFIED PRICE from {source} {item.ShortName} ({templateId}) => {price}");
+            VerifiedContainerPriceCache.StoreVerifiedPrice(templateId, price);
+        }
+
         private static int GetTemplateFallbackPrice(Item item)
         {
             if (item == null || item.Template == null)
@@ -498,7 +602,7 @@ namespace AvgSellPrice
 
             if (item.Template.CreditsPrice > 0)
             {
-                return item.Template.CreditsPrice;
+                return (int)Math.Floor(item.Template.CreditsPrice * 0.6);
             }
 
             return 0;
@@ -511,12 +615,12 @@ namespace AvgSellPrice
                 return 0;
             }
 
-            int traderPrice = GetAverageTraderPriceInternal(item);
+            TraderOffer offer = GetConfiguredTraderOffer(item);
 
-            if (traderPrice > 0)
+            if (offer != null && offer.Price > 0)
             {
-                CacheBasePrice(item, traderPrice);
-                return traderPrice;
+                CacheBasePrice(item, offer.Price);
+                return offer.Price;
             }
 
             int fallback = GetTemplateFallbackPrice(item);
@@ -530,14 +634,58 @@ namespace AvgSellPrice
             return 0;
         }
 
+        private static int GetServerContainerBasePrice(Item item)
+        {
+            string templateId = GetTemplateIdSafe(item);
+
+            if (string.IsNullOrEmpty(templateId))
+            {
+                return 0;
+            }
+
+            int rawPrice = TraderPriceCache.GetPrice(templateId);
+
+            if (rawPrice <= 0)
+            {
+                return 0;
+            }
+
+            int fallbackSellPrice = (int)Math.Floor(rawPrice * 0.6);
+
+            Plugin.Log?.LogInfo(
+                $"[AvgSellPrice] SERVER FALLBACK {item.ShortName} ({templateId}) raw={rawPrice} fallback60={fallbackSellPrice}");
+
+            return fallbackSellPrice;
+        }
+
         private static int GetContainerBasePriceRobust(Item item)
         {
+            if (IsArmoredRig(item))
+{
+    TraderOffer armoredRigOffer = GetConfiguredTraderOffer(item);
+
+    if (armoredRigOffer != null && armoredRigOffer.Price > 0)
+    {
+        Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG direct trader price {item.ShortName}: {armoredRigOffer.Price}");
+        return armoredRigOffer.Price;
+    }
+
+    Plugin.Log?.LogWarning($"[AvgSellPrice] ARMORED RIG no direct trader price {item.ShortName}");
+    return 0;
+}
+
             if (item == null)
             {
                 return 0;
             }
 
-            // 1. Cached base price for this template
+            int verifiedPrice = GetVerifiedContainerBasePrice(item);
+            if (verifiedPrice > 0)
+            {
+                CacheBasePrice(item, verifiedPrice);
+                return verifiedPrice;
+            }
+
             int cachedPrice = GetCachedBasePrice(item);
             if (cachedPrice > 0)
             {
@@ -545,36 +693,85 @@ namespace AvgSellPrice
                 return cachedPrice;
             }
 
-            // 2. Try to learn base price from an empty identical item in player inventory
+            int emptyClonePrice = GetEmptyCloneContainerPrice(item);
+            if (emptyClonePrice > 0)
+            {
+                Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from empty clone {item.ShortName}: {emptyClonePrice}");
+                CacheBasePrice(item, emptyClonePrice);
+                StoreVerifiedContainerBasePrice(item, emptyClonePrice, "empty clone");
+                return emptyClonePrice;
+            }
+
             int donorPrice = TryGetBasePriceFromEmptyIdenticalItem(item);
             if (donorPrice > 0)
             {
                 Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from donor {item.ShortName}: {donorPrice}");
                 CacheBasePrice(item, donorPrice);
+                StoreVerifiedContainerBasePrice(item, donorPrice, "donor");
                 return donorPrice;
             }
 
-            // 3. Template fallback
-            int templatePrice = GetTemplateFallbackPrice(item);
-            if (templatePrice > 0)
+            TraderOffer traderOffer = GetConfiguredTraderOffer(item);
+            if (traderOffer != null && traderOffer.Price > 0)
             {
-                Plugin.Log?.LogWarning($"[AvgSellPrice] BASE from template (CreditsPrice) {item.ShortName}: {templatePrice} - trader lookup failed!");
-                CacheBasePrice(item, templatePrice);
-                return templatePrice;
+                Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from trader direct {item.ShortName}: {traderOffer.Price}");
+                CacheBasePrice(item, traderOffer.Price);
+                StoreVerifiedContainerBasePrice(item, traderOffer.Price, "trader direct");
+                return traderOffer.Price;
             }
 
-            // 4. Direct trader lookup as last fallback
-            int traderPrice = GetAverageTraderPriceInternal(item);
-            if (traderPrice > 0)
+            int serverPrice = GetServerContainerBasePrice(item);
+            if (serverPrice > 0)
             {
-                Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from trader direct {item.ShortName}: {traderPrice}");
-                CacheBasePrice(item, traderPrice);
-                return traderPrice;
+                Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from server fallback {item.ShortName}: {serverPrice}");
+                return serverPrice;
             }
 
             Plugin.Log?.LogWarning($"[AvgSellPrice] BASE PRICE ZERO for {item.ShortName} ({GetTemplateIdSafe(item)})");
             return 0;
         }
+
+        private static int GetEmptyCloneContainerPrice(Item item)
+        {
+            if (item == null)
+            {
+                return 0;
+            }
+
+            if (Session == null || Session.Profile == null)
+            {
+                return 0;
+            }
+
+            if (!Session.Profile.Examined(item))
+            {
+                Plugin.Log?.LogWarning($"[AvgSellPrice] EMPTY CLONE SKIPPED, NOT EXAMINED: {item.ShortName} ({GetTemplateIdSafe(item)})");
+                return 0;
+            }
+
+            try
+            {
+                Item queryItem = BuildTraderQueryItem(item, preserveOriginalId: false, stripContainerContents: true);
+
+                if (Session?.Traders != null)
+                {
+                    foreach (var t in Session.Traders.Where(t => t != null && t.Settings != null && !t.Settings.AvailableInRaid))
+                    {
+                        var p = t.GetUserItemPrice(queryItem);
+                        var supply = t.GetSupplyDataSafe();
+                        Plugin.Log?.LogInfo($"[AvgSellPrice] CLONE {item.ShortName} @ {t.LocalizedName}: price={p?.Amount.ToString() ?? "NULL"} supply={supply != null} courses={supply?.CurrencyCourses != null}");
+                    }
+                }
+
+                return GetAverageTraderPriceFromQueryItem(queryItem, item);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"[AvgSellPrice] Empty clone pricing failed for {item.ShortName}: {ex.Message}");
+                return 0;
+            }
+        }
+
         private static int TryGetBasePriceFromEmptyIdenticalItem(Item item)
         {
             if (item == null)
@@ -608,7 +805,6 @@ namespace AvgSellPrice
                     continue;
                 }
 
-                // Must be empty to represent base price only
                 if (HasChildren(candidate))
                 {
                     continue;
@@ -694,13 +890,6 @@ namespace AvgSellPrice
                 return null;
             }
 
-            SupplyData supply = trader.GetSupplyDataSafe();
-
-            if (supply == null)
-            {
-                return null;
-            }
-
             if (!price.Value.CurrencyId.HasValue)
             {
                 return null;
@@ -708,13 +897,39 @@ namespace AvgSellPrice
 
             string currencyId = price.Value.CurrencyId.Value;
 
-            if (supply.CurrencyCourses == null)
+            SupplyData supply = trader.GetSupplyDataSafe();
+
+            if (supply == null || supply.CurrencyCourses == null)
             {
+                string rubCurrencyId = "5449016a4bdc2d6f028b456f";
+
+                if (string.Equals(currencyId, rubCurrencyId, StringComparison.Ordinal))
+                {
+                    return new TraderOffer(
+                        trader.LocalizedName,
+                        price.Value.Amount,
+                        CurrencyUtil.GetCurrencyCharById(currencyId),
+                        1.0
+                    );
+                }
+
                 return null;
             }
 
             if (!supply.CurrencyCourses.ContainsKey(currencyId))
             {
+                string rubCurrencyId = "5449016a4bdc2d6f028b456f";
+
+                if (string.Equals(currencyId, rubCurrencyId, StringComparison.Ordinal))
+                {
+                    return new TraderOffer(
+                        trader.LocalizedName,
+                        price.Value.Amount,
+                        CurrencyUtil.GetCurrencyCharById(currencyId),
+                        1.0
+                    );
+                }
+
                 return null;
             }
 
@@ -726,106 +941,18 @@ namespace AvgSellPrice
             );
         }
 
-        private static IEnumerable<TraderOffer> GetAllTraderOffers(Item item)
+        private static IEnumerable<TraderOffer> GetTraderOffersForQueryItem(Item queryItem, Item examinedSource)
         {
-            if (item == null)
+            if (queryItem == null || Session == null || Session.Profile == null || Session.Traders == null)
             {
                 return new List<TraderOffer>();
             }
 
-            if (Session == null)
+            if (examinedSource != null && !Session.Profile.Examined(examinedSource))
             {
+                Plugin.Log?.LogWarning($"[AvgSellPrice] NOT EXAMINED: {examinedSource.ShortName} ({GetTemplateIdSafe(examinedSource)})");
                 return new List<TraderOffer>();
             }
-
-            if (Session.Profile == null)
-            {
-                return new List<TraderOffer>();
-            }
-
-            if (Session.Traders == null)
-            {
-                return new List<TraderOffer>();
-            }
-
-            if (!Session.Profile.Examined(item))
-            {
-                Plugin.Log?.LogWarning($"[AvgSellPrice] NOT EXAMINED: {item.ShortName} ({GetTemplateIdSafe(item)})");
-                return new List<TraderOffer>();
-            }
-
-            // Lav altid en klon med stack=1 FØR vi sender til trader.
-            // Klonen bruges kun til trader-opslag — Examined checker originalen ovenfor.
-            Item queryItem = item;
-            try
-            {
-                Item clone = item.CloneItem();
-                clone.StackObjectsCount = 1;
-                clone.UnlimitedCount = false;
-
-                // Kopiér original item-id til klonen.
-                // GetUserItemPrice slår op via item-id internt — kloner får et nyt
-                // random id der ikke kendes af trader's assortment.
-                try
-                {
-                    FieldInfo idField = typeof(Item).GetField("Id",
-                        BindingFlags.Public | BindingFlags.Instance);
-                    if (idField == null)
-                        idField = typeof(Item).GetField("_id",
-                            BindingFlags.NonPublic | BindingFlags.Instance);
-                    if (idField != null)
-                        idField.SetValue(clone, item.Id);
-                }
-                catch { }
-
-                // Ryd både grids og slots på klonen så trader ser et tomt item
-                if (clone is CompoundItem compound)
-                {
-                    // Ryd grids
-                    foreach (var grid in compound.Grids)
-                    {
-                        Type t = grid.GetType();
-                        while (t != null)
-                        {
-                            bool found = false;
-                            foreach (var field in t.GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public))
-                            {
-                                if (!field.FieldType.IsGenericType) continue;
-                                var val = field.GetValue(grid);
-                                var asDict = val as System.Collections.IDictionary;
-                                if (asDict != null) { asDict.Clear(); found = true; break; }
-                                var asList = val as System.Collections.IList;
-                                if (asList != null) { asList.Clear(); found = true; break; }
-                            }
-                            if (found) break;
-                            t = t.BaseType;
-                        }
-                    }
-
-                    // Ryd slots (soft armor, holster, osv.)
-                    foreach (var slot in compound.Slots)
-                    {
-                        try
-                        {
-                            if (slot.ContainedItem != null)
-                            {
-                                var slotType = slot.GetType();
-                                while (slotType != null)
-                                {
-                                    var field = slotType.GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public)
-                                        .FirstOrDefault(f => typeof(Item).IsAssignableFrom(f.FieldType));
-                                    if (field != null) { field.SetValue(slot, null); break; }
-                                    slotType = slotType.BaseType;
-                                }
-                            }
-                        }
-                        catch { }
-                    }
-                }
-
-                queryItem = clone;
-            }
-            catch { }
 
             return Session.Traders
                 .Where(t => t != null)
@@ -837,7 +964,192 @@ namespace AvgSellPrice
                 .ToList();
         }
 
-        private static int GetAverageTraderPriceInternal(Item item)
+        private static Item BuildTraderQueryItem(Item item, bool preserveOriginalId, bool stripContainerContents)
+        {
+            if (item == null)
+            {
+                return null;
+            }
+
+            Item clone = item.CloneItem();
+            clone.StackObjectsCount = 1;
+            clone.UnlimitedCount = false;
+
+            if (preserveOriginalId)
+            {
+                try
+                {
+                    FieldInfo idField = typeof(Item).GetField("Id",
+                        BindingFlags.Public | BindingFlags.Instance);
+                    if (idField == null)
+                    {
+                        idField = typeof(Item).GetField("_id",
+                            BindingFlags.NonPublic | BindingFlags.Instance);
+                    }
+
+                    if (idField != null)
+                    {
+                        idField.SetValue(clone, item.Id);
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            if (!stripContainerContents)
+            {
+                return clone;
+            }
+
+            CompoundItem compound = clone as CompoundItem;
+            if (compound == null)
+            {
+                return clone;
+            }
+
+            foreach (var grid in compound.Grids)
+            {
+                Type t = grid.GetType();
+                while (t != null)
+                {
+                    bool found = false;
+                    foreach (var field in t.GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public))
+                    {
+                        if (!field.FieldType.IsGenericType)
+                        {
+                            continue;
+                        }
+
+                        var val = field.GetValue(grid);
+                        var asDict = val as IDictionary;
+                        if (asDict != null)
+                        {
+                            asDict.Clear();
+                            found = true;
+                            break;
+                        }
+
+                        var asList = val as IList;
+                        if (asList != null)
+                        {
+                            asList.Clear();
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (found)
+                    {
+                        break;
+                    }
+
+                    t = t.BaseType;
+                }
+            }
+
+            foreach (var slot in compound.Slots)
+            {
+                try
+                {
+                    if (slot.ContainedItem == null)
+                    {
+                        continue;
+                    }
+
+                    var slotType = slot.GetType();
+                    while (slotType != null)
+                    {
+                        var field = slotType.GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public)
+                            .FirstOrDefault(f => typeof(Item).IsAssignableFrom(f.FieldType));
+                        if (field != null)
+                        {
+                            field.SetValue(slot, null);
+                            break;
+                        }
+
+                        slotType = slotType.BaseType;
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return clone;
+        }
+
+        private static IEnumerable<TraderOffer> GetAllTraderOffers(Item item)
+        {
+            if (item == null)
+            {
+                return new List<TraderOffer>();
+            }
+
+            if (Session == null || Session.Profile == null || Session.Traders == null)
+            {
+                return new List<TraderOffer>();
+            }
+
+            if (!Session.Profile.Examined(item))
+            {
+                Plugin.Log?.LogWarning($"[AvgSellPrice] NOT EXAMINED: {item.ShortName} ({GetTemplateIdSafe(item)})");
+                return new List<TraderOffer>();
+            }
+
+            bool stripContainerContents = IsRealContainer(item) && HasChildren(item);
+
+            try
+            {
+                Item primaryQueryItem = BuildTraderQueryItem(
+                    item,
+                    preserveOriginalId: true,
+                    stripContainerContents: stripContainerContents);
+
+                List<TraderOffer> primaryOffers = GetTraderOffersForQueryItem(primaryQueryItem, item).ToList();
+                if (primaryOffers.Count > 0)
+                {
+                    return primaryOffers;
+                }
+
+                if (stripContainerContents)
+                {
+                    Item fallbackQueryItem = BuildTraderQueryItem(
+                        item,
+                        preserveOriginalId: false,
+                        stripContainerContents: true);
+
+                    List<TraderOffer> fallbackOffers = GetTraderOffersForQueryItem(fallbackQueryItem, item).ToList();
+                    if (fallbackOffers.Count > 0)
+                    {
+                        Plugin.Log?.LogInfo($"[AvgSellPrice] Container fallback without original id worked for {item.ShortName}");
+                        return fallbackOffers;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"[AvgSellPrice] Trader query clone failed for {item.ShortName}: {ex.Message}");
+            }
+
+            return GetTraderOffersForQueryItem(item, item);
+        }
+
+        private static TraderOffer GetBestTraderOffer(Item item)
+        {
+            return GetAllTraderOffers(item)
+                .OrderByDescending(x => x.Price * x.Course)
+                .FirstOrDefault();
+        }
+
+        private static TraderOffer GetBestTraderOfferFromQueryItem(Item queryItem, Item examinedSource)
+        {
+            return GetTraderOffersForQueryItem(queryItem, examinedSource)
+                .OrderByDescending(x => x.Price * x.Course)
+                .FirstOrDefault();
+        }
+
+        private static TraderOffer GetAverageTraderOffer(Item item)
         {
             List<TraderOffer> offers = GetAllTraderOffers(item)
                 .Take(3)
@@ -845,22 +1157,82 @@ namespace AvgSellPrice
 
             if (offers.Count == 0)
             {
-                return 0;
+                return null;
             }
 
-            List<int> prices = offers
-                .Select(x => x.Price)
-                .OrderBy(x => x)
+            List<TraderOffer> ordered = offers
+                .OrderBy(x => x.Price)
                 .ToList();
 
-            int mid = prices.Count / 2;
+            int mid = ordered.Count / 2;
 
-            if (prices.Count % 2 == 0)
+            if (ordered.Count % 2 == 0)
             {
-                return (prices[mid - 1] + prices[mid]) / 2;
+                int avgPrice = (ordered[mid - 1].Price + ordered[mid].Price) / 2;
+                TraderOffer topOffer = offers.OrderByDescending(x => x.Price * x.Course).First();
+                return new TraderOffer(topOffer.Name, avgPrice, topOffer.Currency, topOffer.Course);
             }
 
-            return prices[mid];
+            return ordered[mid];
+        }
+
+        private static TraderOffer GetAverageTraderOfferFromQueryItem(Item queryItem, Item examinedSource)
+        {
+            List<TraderOffer> offers = GetTraderOffersForQueryItem(queryItem, examinedSource)
+                .Take(3)
+                .ToList();
+
+            if (offers.Count == 0)
+            {
+                return null;
+            }
+
+            List<TraderOffer> ordered = offers
+                .OrderBy(x => x.Price)
+                .ToList();
+
+            int mid = ordered.Count / 2;
+
+            if (ordered.Count % 2 == 0)
+            {
+                int avgPrice = (ordered[mid - 1].Price + ordered[mid].Price) / 2;
+                TraderOffer topOffer = offers.OrderByDescending(x => x.Price * x.Course).First();
+                return new TraderOffer(topOffer.Name, avgPrice, topOffer.Currency, topOffer.Course);
+            }
+
+            return ordered[mid];
+        }
+
+        private static TraderOffer GetConfiguredTraderOffer(Item item)
+        {
+            return PluginConfig.ContainerPriceMode.Value == PriceMode.Best
+                ? GetBestTraderOffer(item)
+                : GetAverageTraderOffer(item);
+        }
+
+        private static TraderOffer GetConfiguredTraderOfferFromQueryItem(Item queryItem, Item examinedSource)
+        {
+            return PluginConfig.ContainerPriceMode.Value == PriceMode.Best
+                ? GetBestTraderOfferFromQueryItem(queryItem, examinedSource)
+                : GetAverageTraderOfferFromQueryItem(queryItem, examinedSource);
+        }
+
+        private static string GetConfiguredTraderName(Item item)
+        {
+            TraderOffer offer = GetConfiguredTraderOffer(item);
+            return offer != null ? offer.Name : string.Empty;
+        }
+
+        private static int GetAverageTraderPriceFromQueryItem(Item queryItem, Item examinedSource)
+        {
+            TraderOffer offer = GetConfiguredTraderOfferFromQueryItem(queryItem, examinedSource);
+            return offer != null ? offer.Price : 0;
+        }
+
+        private static int GetAverageTraderPriceInternal(Item item)
+        {
+            TraderOffer offer = GetConfiguredTraderOffer(item);
+            return offer != null ? offer.Price : 0;
         }
 
         private static string FormatPrice(int price)
@@ -904,6 +1276,27 @@ namespace AvgSellPrice
         public static void ClearPriceCacheSafe()
         {
             CachedBasePricesByTemplateId.Clear();
+        }
+
+        public static bool TryPrecacheContainerPrice(Item item)
+        {
+            if (item == null)
+            {
+                return false;
+            }
+
+            if (!IsRealContainer(item))
+            {
+                return false;
+            }
+
+            if (GetCachedBasePrice(item) > 0)
+            {
+                return true;
+            }
+
+            int price = GetContainerBasePriceRobust(item);
+            return price > 0;
         }
 
         public static List<Item> GetAllPlayerItemsSafe()
@@ -999,6 +1392,28 @@ namespace AvgSellPrice
                     AddItemTree(entryItem, uniqueItems);
                 }
             }
+        }
+        private static bool IsArmoredRig(Item item)
+        {
+            if (!(item is VestItemClass))
+            {
+                return false;
+            }
+
+            try
+            {
+                var armorProperty = item.GetType().GetProperty("ArmorComponent", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (armorProperty != null)
+                {
+                    object armorComponent = armorProperty.GetValue(item, null);
+                    return armorComponent != null;
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
         }
 
         private static void AddItemTree(Item rootItem, HashSet<Item> uniqueItems)

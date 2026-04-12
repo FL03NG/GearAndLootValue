@@ -46,11 +46,9 @@ namespace AvgSellPrice
                     return;
                 }
 
-                if (item.Owner != null &&
-                    item.Owner.OwnerType != EOwnerType.Profile &&
-                    item.Owner.GetType().Name == "TraderControllerClass")
+                if (PluginConfig.HideTooltipInTraderSellScreen.Value && LooksLikeTraderSellTooltip(text))
                 {
-                    return;
+                    text = RemoveTraderSellPriceLines(text);
                 }
 
                 string priceText = item.GetHoverPriceText();
@@ -94,6 +92,86 @@ namespace AvgSellPrice
                     Plugin.Log.LogError("SimpleTooltipShowPatch failed: " + ex);
                 }
             }
+        }
+
+        private static bool LooksLikeTraderSellTooltip(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            string normalized = NormalizeTooltipText(text);
+
+            return normalized.Contains("prapor:") ||
+                   normalized.Contains("therapist:") ||
+                   normalized.Contains("fence:") ||
+                   normalized.Contains("skier:") ||
+                   normalized.Contains("peacekeeper:") ||
+                   normalized.Contains("mechanic:") ||
+                   normalized.Contains("ragman:") ||
+                   normalized.Contains("jaeger:") ||
+                   normalized.Contains("ref:");
+        }
+
+        private static string RemoveTraderSellPriceLines(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return text;
+            }
+
+            string[] lines = text.Split(new[] { "<br>" }, StringSplitOptions.None);
+
+            string[] filtered = lines
+                .Where(line => !LooksLikeTraderSellLine(line))
+                .ToArray();
+
+            if (filtered.Length == 0)
+            {
+                return text;
+            }
+
+            return string.Join("<br>", filtered);
+        }
+
+        private static bool LooksLikeTraderSellLine(string line)
+        {
+            if (string.IsNullOrEmpty(line))
+            {
+                return false;
+            }
+
+            string normalized = NormalizeTooltipText(line).Trim();
+
+            return normalized.StartsWith("prapor:") ||
+                   normalized.StartsWith("therapist:") ||
+                   normalized.StartsWith("fence:") ||
+                   normalized.StartsWith("skier:") ||
+                   normalized.StartsWith("peacekeeper:") ||
+                   normalized.StartsWith("mechanic:") ||
+                   normalized.StartsWith("ragman:") ||
+                   normalized.StartsWith("jaeger:") ||
+                   normalized.StartsWith("ref:");
+        }
+
+        private static string NormalizeTooltipText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            return text
+                .Replace("<br>", "\n")
+                .Replace("</color>", string.Empty)
+                .Replace("<color=#c5bfb3>", string.Empty)
+                .Replace("<color=#aeb4c4>", string.Empty)
+                .Replace("<color=#ffffff>", string.Empty)
+                .Replace("<color=white>", string.Empty)
+                .Replace("<color=grey>", string.Empty)
+                .Replace("<color=gray>", string.Empty)
+                .ToLowerInvariant();
         }
 
         private static string ReplaceFirstLineWithShortName(string originalText, string shortName)

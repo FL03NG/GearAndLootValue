@@ -2,16 +2,21 @@
 
 namespace AvgSellPrice
 {
+    public enum PriceMode
+    {
+        Average = 0,
+        Best = 1
+    }
+
     internal static class PluginConfig
     {
-        // Viser præcis pris frem for afrundet (fx "1 234 ₽" i stedet for "1k")
-        public static ConfigEntry<bool> PrecisePrice { get; private set; }
+        public static ConfigEntry<bool> PrecisePrice;
+        public static ConfigEntry<bool> ShowAroundPrefix;
+        public static ConfigEntry<int> MinimumDisplayPrice;
 
-        // Vis "Around" foran prisen (slå fra hvis man vil have ren pris)
-        public static ConfigEntry<bool> ShowAroundPrefix { get; private set; }
-
-        // Minimum-pris der vises – alt under dette rundes op (default 1000)
-        public static ConfigEntry<int> MinimumDisplayPrice { get; private set; }
+        public static ConfigEntry<PriceMode> ContainerPriceMode;
+        public static ConfigEntry<bool> ShowTraderNameInTooltip;
+        public static ConfigEntry<bool> HideTooltipInTraderSellScreen;
 
         public static void Init(ConfigFile config)
         {
@@ -19,21 +24,42 @@ namespace AvgSellPrice
                 "Display",
                 "PrecisePrice",
                 false,
-                "Vis den præcise pris i stedet for afrundet (fx '1 234 ₽' i stedet for '1k')."
+                "Show full exact price instead of shortened values like 13k / 1.2m."
             );
 
             ShowAroundPrefix = config.Bind(
                 "Display",
                 "ShowAroundPrefix",
                 true,
-                "Vis 'Around' foran prisen. Sæt til false for at få ren pris uden prefix."
+                "Show 'Around' before the displayed price."
             );
 
             MinimumDisplayPrice = config.Bind(
                 "Display",
                 "MinimumDisplayPrice",
-                1000,
-                "Priser under denne grænse vises som denne værdi i stedet (fx 789 vises som 1k). Sæt til 0 for at deaktivere."
+                0,
+                "If greater than 0, any positive price below this value will be displayed as this minimum instead."
+            );
+
+            ContainerPriceMode = config.Bind(
+                "Pricing",
+                "ContainerPriceMode",
+                PriceMode.Best,
+                "Choose how trader prices are selected: Average or Best."
+            );
+
+            ShowTraderNameInTooltip = config.Bind(
+                "Pricing",
+                "ShowTraderNameInTooltip",
+                true,
+                "Show trader name in tooltip text."
+            );
+
+            HideTooltipInTraderSellScreen = config.Bind(
+                "UI",
+                "HideTooltipInTraderSellScreen",
+                true,
+                "Hide Approx Sell Price tooltip while inside trader sell screen."
             );
         }
     }

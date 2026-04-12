@@ -20,8 +20,7 @@ namespace AvgSellPrice
         {
             if (__instance != null && __instance.Item != null)
             {
-                HoverState.HoveredItem = __instance.Item;
-                HoverState.IsGridItemHovered = true;
+                HoverState.BeginHover(__instance.Item);
             }
         }
     }

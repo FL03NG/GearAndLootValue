@@ -1,11 +1,8 @@
-﻿using BepInEx;
+using BepInEx;
 using EFT;
 using EFT.InventoryLogic;
 using SPT.Reflection.Patching;
-using System.Collections;
-using System.Collections.Generic;
 using System.Reflection;
-using UnityEngine;
 
 namespace AvgSellPrice
 {
@@ -21,6 +18,12 @@ namespace AvgSellPrice
 
             PluginConfig.Init(Config);
             Log.LogInfo("PluginConfig.Init OK");
+
+            VerifiedContainerPriceCache.Load();
+            Log.LogInfo("VerifiedContainerPriceCache.Load called");
+
+            TraderPriceCache.Load();
+            Log.LogInfo("TraderPriceCache.Load called");
 
             new TraderPatch().Enable();
             Log.LogInfo("TraderPatch enabled");
@@ -42,29 +45,6 @@ namespace AvgSellPrice
 
             new SimpleTooltipShowPatch().Enable();
             Log.LogInfo("SimpleTooltipShowPatch enabled");
-
-            StartCoroutine(DelayedPriceRefresh());
-            Log.LogInfo("DelayedPriceRefresh started");
-        }
-
-        private IEnumerator DelayedPriceRefresh()
-        {
-            yield return new WaitForSeconds(5f);
-            RefreshAllItems();
-
-            yield return new WaitForSeconds(8f);
-            ItemExtensions.ClearPriceCacheSafe();
-            RefreshAllItems();
-        }
-
-        private static void RefreshAllItems()
-        {
-            List<Item> allItems = ItemExtensions.GetAllPlayerItemsSafe();
-
-            foreach (Item item in allItems)
-            {
-                item.AddApproxSellPriceAttribute();
-            }
         }
     }
 
@@ -76,7 +56,7 @@ namespace AvgSellPrice
         }
 
         [PatchPostfix]
-        private static void PatchPostfix(ref TraderClass __instance)
+        private static void PatchPostfix(TraderClass __instance)
         {
             __instance.UpdateSupplyDataSafe();
         }

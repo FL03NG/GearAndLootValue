@@ -18,8 +18,7 @@ namespace AvgSellPrice
         [PatchPrefix]
         private static void PatchPrefix(GridItemView __instance, PointerEventData eventData)
         {
-            HoverState.IsGridItemHovered = false;
-            HoverState.HoveredItem = null;
+            HoverState.EndHover();
         }
     }
 }
