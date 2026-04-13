@@ -16,6 +16,9 @@ namespace AvgSellPrice
             Log = Logger;
             Log.LogInfo("Approx Sell Price Awake START");
 
+            VerifiedArmoredRigPriceCache.Load();
+            Log.LogInfo("VerifiedArmoredRigPriceCache.Load called");
+
             PluginConfig.Init(Config);
             Log.LogInfo("PluginConfig.Init OK");
 

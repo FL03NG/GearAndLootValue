@@ -196,18 +196,6 @@ namespace AvgSellPrice
                 return string.Empty;
             }
 
-            if (!HasChildren(item))
-            {
-                TraderOffer offer = GetConfiguredTraderOffer(item);
-
-                if (offer == null || offer.Price <= 0)
-                {
-                    return string.Empty;
-                }
-
-                return FormatMainPriceWithOptionalTrader(offer.Name, offer.Price);
-            }
-
             if (item is Weapon)
             {
                 TraderOffer weaponOffer = GetConfiguredTraderOffer(item);
@@ -220,6 +208,49 @@ namespace AvgSellPrice
                 return FormatMainPriceWithOptionalTrader(weaponOffer.Name, weaponOffer.Price);
             }
 
+            if (IsArmoredRig(item))
+            {
+                int rigPrice = GetArmoredRigBasePrice(item);
+
+                if (rigPrice <= 0)
+                {
+                    return string.Empty;
+                }
+
+                int platesPrice = GetArmorPlateTraderPrice(item);
+                int contentsPrice = GetContentsTraderPrice(item);
+                int totalPrice = rigPrice + platesPrice + contentsPrice;
+
+                List<string> rigLines = new List<string>();
+
+                if (PluginConfig.ShowTraderNameInTooltip.Value)
+                {
+                    string traderName = GetConfiguredTraderName(item);
+                    rigLines.Add(FormatMainPriceWithOptionalTrader(traderName, rigPrice));
+                }
+                else
+                {
+                    rigLines.Add(FormatMainPriceWithOptionalTrader(string.Empty, rigPrice));
+                }
+
+                if (platesPrice > 0)
+                {
+                    rigLines.Add("Plates " + FormatPriceExternal(platesPrice));
+                }
+
+                if (contentsPrice > 0)
+                {
+                    rigLines.Add("Contents " + FormatPriceExternal(contentsPrice));
+                }
+
+                if (platesPrice > 0 || contentsPrice > 0)
+                {
+                    rigLines.Add("Total " + FormatPriceExternal(totalPrice));
+                }
+
+                return string.Join(Environment.NewLine, rigLines);
+            }
+
             if (IsRealContainer(item))
             {
                 int basePrice = GetContainerBasePriceRobust(item);
@@ -230,12 +261,7 @@ namespace AvgSellPrice
                 }
 
                 int contentsPrice = GetContentsTraderPrice(item);
-                int totalPrice = basePrice;
-
-                if (contentsPrice > 0)
-                {
-                    totalPrice += contentsPrice;
-                }
+                int totalPrice = basePrice + contentsPrice;
 
                 string traderName = GetConfiguredTraderName(item);
 
@@ -294,34 +320,6 @@ namespace AvgSellPrice
             }
 
             return false;
-        }
-
-        private static string FormatPriceLine(string prefix, int rawPrice)
-        {
-            int price = ApplyMinimumPrice(rawPrice);
-
-            string formattedPrice = PluginConfig.PrecisePrice.Value
-                ? FormatPrecise(price)
-                : FormatPrice(price);
-
-            bool showAround = PluginConfig.ShowAroundPrefix.Value && !PluginConfig.PrecisePrice.Value;
-
-            if (!string.IsNullOrEmpty(prefix))
-            {
-                if (showAround)
-                {
-                    return prefix + " around " + formattedPrice;
-                }
-
-                return prefix + " " + formattedPrice;
-            }
-
-            if (showAround)
-            {
-                return "Around " + formattedPrice;
-            }
-
-            return formattedPrice;
         }
 
         private static string FormatMainPriceWithOptionalTrader(string traderName, int rawPrice)
@@ -409,6 +407,11 @@ namespace AvgSellPrice
                 return false;
             }
 
+            if (IsArmoredRig(item))
+            {
+                return false;
+            }
+
             if (item is BackpackItemClass)
             {
                 return true;
@@ -426,6 +429,199 @@ namespace AvgSellPrice
 
             return false;
         }
+        private static bool IsHardPlateSlotName(string slotName)
+        {
+            if (string.IsNullOrEmpty(slotName))
+            {
+                return false;
+            }
+
+            string lower = slotName.ToLowerInvariant();
+
+            return lower == "front_plate" ||
+                   lower == "back_plate" ||
+                   lower == "left_side_plate" ||
+                   lower == "right_side_plate" ||
+                   lower == "side_plate" ||
+                   lower.Contains("front_plate") ||
+                   lower.Contains("back_plate") ||
+                   lower.Contains("side_plate");
+        }
+        private static bool IsArmorSlotName(string slotName)
+        {
+            if (string.IsNullOrEmpty(slotName))
+            {
+                return false;
+            }
+
+            string lower = slotName.ToLowerInvariant();
+
+            return lower.Contains("soft") ||
+                   lower.Contains("armor") ||
+                   lower.Contains("plate") ||
+                   lower.Contains("insert") ||
+                   lower.Contains("front") ||
+                   lower.Contains("back") ||
+                   lower.Contains("side") ||
+                   lower.Contains("spall") ||
+                   lower.Contains("groin") ||
+                   lower.Contains("throat") ||
+                   lower.Contains("neck") ||
+                   lower.Contains("collar") ||
+                   lower.Contains("shoulder") ||
+                   lower.Contains("arm");
+        }
+
+        private static bool TryGetSlotBoolField(object slot, string fieldName, out bool value)
+        {
+            value = false;
+
+            if (slot == null)
+            {
+                return false;
+            }
+
+            Type t = slot.GetType();
+
+            while (t != null)
+            {
+                FieldInfo field = t.GetField(fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (field != null && field.FieldType == typeof(bool))
+                {
+                    value = (bool)field.GetValue(slot);
+                    return true;
+                }
+
+                t = t.BaseType;
+            }
+
+            return false;
+        }
+        private static bool IsItemInHardPlateSlot(Item item)
+        {
+            if (item == null)
+            {
+                return false;
+            }
+
+            GClass3391 address = item.CurrentAddress as GClass3391;
+            string slotName = address?.Slot?.Name;
+
+            return IsHardPlateSlotName(slotName);
+        }
+        private static bool IsItemInAnyArmorSlot(Item item)
+        {
+            if (item == null)
+            {
+                return false;
+            }
+
+            GClass3391 address = item.CurrentAddress as GClass3391;
+            string slotName = address?.Slot?.Name;
+
+            return IsArmorSlotName(slotName);
+        }
+        private static bool TryGetLockedFromSlotProps(Slot slot, out bool locked)
+        {
+            locked = false;
+
+            if (slot == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                object props = null;
+                Type t = slot.GetType();
+
+                while (t != null && props == null)
+                {
+                    FieldInfo propsField = t.GetField("_props", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (propsField != null)
+                    {
+                        props = propsField.GetValue(slot);
+                    }
+
+                    t = t.BaseType;
+                }
+
+                if (props == null)
+                {
+                    return false;
+                }
+
+                Type propsType = props.GetType();
+
+                FieldInfo lockedField = propsType.GetField("locked", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (lockedField != null && lockedField.FieldType == typeof(bool))
+                {
+                    locked = (bool)lockedField.GetValue(props);
+                    return true;
+                }
+
+                PropertyInfo lockedProp = propsType.GetProperty("locked", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (lockedProp != null && lockedProp.PropertyType == typeof(bool))
+                {
+                    locked = (bool)lockedProp.GetValue(props, null);
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
+        }
+
+        private static bool IsBuiltInArmorSlot(Slot slot)
+        {
+            if (slot == null)
+            {
+                return false;
+            }
+
+            if (!IsArmorSlotName(slot.Name))
+            {
+                return false;
+            }
+
+            bool required;
+            bool locked;
+
+            bool hasRequired = TryGetSlotBoolField(slot, "_required", out required);
+            bool hasLocked = TryGetLockedFromSlotProps(slot, out locked);
+
+            return (hasRequired && required) || (hasLocked && locked);
+        }
+
+        private static bool IsRemovableArmorSlot(Slot slot)
+        {
+            if (slot == null)
+            {
+                return false;
+            }
+
+            if (!IsArmorSlotName(slot.Name))
+            {
+                return false;
+            }
+
+            return !IsBuiltInArmorSlot(slot);
+        }
+
+        private static bool IsItemInArmorSlot(Item item)
+        {
+            if (item == null)
+            {
+                return false;
+            }
+
+            GClass3391 address = item.CurrentAddress as GClass3391;
+            string slotName = address?.Slot?.Name;
+
+            return IsArmorSlotName(slotName);
+        }
 
         private static bool ShouldCountAsContents(Item parent, Item child)
         {
@@ -434,77 +630,56 @@ namespace AvgSellPrice
                 return false;
             }
 
-            if (!IsRealContainer(parent))
+            bool parentCanContainLoot = IsRealContainer(parent) || IsArmoredRig(parent);
+
+            if (!parentCanContainLoot)
             {
                 return false;
             }
 
-            if (child is ArmorPlateItemClass)
-            {
-                return false;
-            }
-
-            GClass3391 address = child.CurrentAddress as GClass3391;
-
-            if (address == null || address.Slot == null)
-            {
-                return true;
-            }
-
-            string slotName = address.Slot.Name.ToLowerInvariant();
-
-            if (slotName.StartsWith("mod"))
-            {
-                return false;
-            }
-
-            if (slotName.Contains("armor"))
-            {
-                return false;
-            }
-
-            if (slotName.Contains("plate"))
-            {
-                return false;
-            }
-
-            if (slotName.Contains("insert"))
-            {
-                return false;
-            }
-
-            if (slotName.Contains("soft"))
-            {
-                return false;
-            }
-
-            if (slotName.Contains("head"))
-            {
-                return false;
-            }
-
-            if (slotName.Contains("face"))
-            {
-                return false;
-            }
-
-            if (slotName.Contains("ear"))
-            {
-                return false;
-            }
-
-            if (slotName.Contains("collimator"))
-            {
-                return false;
-            }
-
-            if (slotName.Contains("scope"))
+            if (IsItemInAnyArmorSlot(child))
             {
                 return false;
             }
 
             return true;
         }
+
+
+        private static int GetArmorPlateTraderPrice(Item item)
+        {
+            if (item == null)
+            {
+                return 0;
+            }
+
+            int total = 0;
+
+            foreach (Item child in item.GetAllItems())
+            {
+                if (child == null || child == item)
+                {
+                    continue;
+                }
+
+                if (!IsItemInHardPlateSlot(child))
+                {
+                    continue;
+                }
+
+                int platePrice = GetAverageTraderPriceInternal(child);
+
+                if (platePrice <= 0)
+                {
+                    platePrice = GetTemplateFallbackPrice(child);
+                }
+
+                total += platePrice;
+            }
+
+            return total;
+        }
+
 
         private static string GetTemplateIdSafe(Item item)
         {
@@ -558,6 +733,11 @@ namespace AvgSellPrice
 
         private static int GetVerifiedContainerBasePrice(Item item)
         {
+            if (item == null || IsArmoredRig(item))
+            {
+                return 0;
+            }
+
             string templateId = GetTemplateIdSafe(item);
 
             if (string.IsNullOrEmpty(templateId))
@@ -578,6 +758,11 @@ namespace AvgSellPrice
         private static void StoreVerifiedContainerBasePrice(Item item, int price, string source)
         {
             if (item == null || price <= 0)
+            {
+                return;
+            }
+
+            if (IsArmoredRig(item))
             {
                 return;
             }
@@ -615,6 +800,11 @@ namespace AvgSellPrice
                 return 0;
             }
 
+            if (IsArmoredRig(item))
+            {
+                return GetArmoredRigBasePrice(item);
+            }
+
             TraderOffer offer = GetConfiguredTraderOffer(item);
 
             if (offer != null && offer.Price > 0)
@@ -633,6 +823,190 @@ namespace AvgSellPrice
 
             return 0;
         }
+
+        private static int GetArmoredRigBasePrice(Item item)
+        {
+            if (item == null)
+            {
+                return 0;
+            }
+
+            try
+            {
+                Item queryItem = BuildArmoredRigQueryItem(item);
+                if (queryItem != null)
+                {
+                    TraderOffer queryOffer = GetConfiguredTraderOfferFromQueryItem(queryItem, item);
+                    if (queryOffer != null && queryOffer.Price > 0)
+                    {
+                        CacheBasePrice(item, queryOffer.Price);
+                        Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG base without hard plates {item.ShortName}: {queryOffer.Price}");
+                        return queryOffer.Price;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"[AvgSellPrice] Armored rig base query failed for {item.ShortName}: {ex.Message}");
+            }
+
+            int cachedPrice = GetCachedBasePrice(item);
+            if (cachedPrice > 0)
+            {
+                return cachedPrice;
+            }
+
+            string templateId = GetTemplateIdSafe(item);
+            if (!string.IsNullOrEmpty(templateId))
+            {
+                int serverPrice = TraderPriceCache.GetPrice(templateId);
+                if (serverPrice > 0)
+                {
+                    CacheBasePrice(item, serverPrice);
+                    return serverPrice;
+                }
+            }
+
+            int fallback = GetTemplateFallbackPrice(item);
+            if (fallback > 0)
+            {
+                CacheBasePrice(item, fallback);
+                return fallback;
+            }
+
+            return 0;
+        }
+
+
+        private static TraderOffer GetArmoredRigTraderOffer(Item item)
+        {
+            if (item == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                Item queryItem = BuildArmoredRigQueryItem(item);
+                if (queryItem == null)
+                {
+                    return null;
+                }
+
+                TraderOffer queryOffer = GetConfiguredTraderOfferFromQueryItem(queryItem, item);
+                if (queryOffer != null && queryOffer.Price > 0)
+                {
+                    Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG query price {item.ShortName}: {queryOffer.Price} via {queryOffer.Name}");
+                    return queryOffer;
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"[AvgSellPrice] Armored rig query failed for {item.ShortName}: {ex.Message}");
+            }
+
+            Plugin.Log?.LogWarning($"[AvgSellPrice] ARMORED RIG has no trader price: {item.ShortName}");
+            return null;
+        }
+
+        private static Item BuildArmoredRigQueryItem(Item item)
+        {
+            if (item == null)
+            {
+                return null;
+            }
+
+            Item clone = item.CloneItem();
+            clone.StackObjectsCount = 1;
+            clone.UnlimitedCount = false;
+
+            CompoundItem compound = clone as CompoundItem;
+            if (compound == null)
+            {
+                return clone;
+            }
+
+            foreach (var grid in compound.Grids)
+            {
+                Type t = grid.GetType();
+
+                while (t != null)
+                {
+                    bool found = false;
+
+                    foreach (var field in t.GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public))
+                    {
+                        if (!field.FieldType.IsGenericType)
+                        {
+                            continue;
+                        }
+
+                        var val = field.GetValue(grid);
+                        var asDict = val as IDictionary;
+                        if (asDict != null)
+                        {
+                            asDict.Clear();
+                            found = true;
+                            break;
+                        }
+
+                        var asList = val as IList;
+                        if (asList != null)
+                        {
+                            asList.Clear();
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (found)
+                    {
+                        break;
+                    }
+
+                    t = t.BaseType;
+                }
+            }
+
+            foreach (Slot slot in compound.Slots)
+            {
+                if (slot == null || slot.ContainedItem == null)
+                {
+                    continue;
+                }
+
+                if (!IsHardPlateSlotName(slot.Name))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    Type slotType = slot.GetType();
+
+                    while (slotType != null)
+                    {
+                        FieldInfo field = slotType
+                            .GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public)
+                            .FirstOrDefault(f => typeof(Item).IsAssignableFrom(f.FieldType));
+
+                        if (field != null)
+                        {
+                            field.SetValue(slot, null);
+                            break;
+                        }
+
+                        slotType = slotType.BaseType;
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return clone;
+        }
+
 
         private static int GetServerContainerBasePrice(Item item)
         {
@@ -660,22 +1034,14 @@ namespace AvgSellPrice
 
         private static int GetContainerBasePriceRobust(Item item)
         {
-            if (IsArmoredRig(item))
-{
-    TraderOffer armoredRigOffer = GetConfiguredTraderOffer(item);
-
-    if (armoredRigOffer != null && armoredRigOffer.Price > 0)
-    {
-        Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG direct trader price {item.ShortName}: {armoredRigOffer.Price}");
-        return armoredRigOffer.Price;
-    }
-
-    Plugin.Log?.LogWarning($"[AvgSellPrice] ARMORED RIG no direct trader price {item.ShortName}");
-    return 0;
-}
-
             if (item == null)
             {
+                return 0;
+            }
+
+            if (IsArmoredRig(item))
+            {
+                Plugin.Log?.LogInfo($"[AvgSellPrice] Skipping container base logic for armored rig {item.ShortName}");
                 return 0;
             }
 
@@ -711,23 +1077,22 @@ namespace AvgSellPrice
                 return donorPrice;
             }
 
-            TraderOffer traderOffer = GetConfiguredTraderOffer(item);
-            if (traderOffer != null && traderOffer.Price > 0)
-            {
-                Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from trader direct {item.ShortName}: {traderOffer.Price}");
-                CacheBasePrice(item, traderOffer.Price);
-                StoreVerifiedContainerBasePrice(item, traderOffer.Price, "trader direct");
-                return traderOffer.Price;
-            }
-
             int serverPrice = GetServerContainerBasePrice(item);
             if (serverPrice > 0)
             {
                 Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from server fallback {item.ShortName}: {serverPrice}");
+                CacheBasePrice(item, serverPrice);
                 return serverPrice;
             }
 
-            Plugin.Log?.LogWarning($"[AvgSellPrice] BASE PRICE ZERO for {item.ShortName} ({GetTemplateIdSafe(item)})");
+            int templateFallback = GetTemplateFallbackPrice(item);
+            if (templateFallback > 0)
+            {
+                Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from handbook fallback {item.ShortName}: {templateFallback}");
+                CacheBasePrice(item, templateFallback);
+                return templateFallback;
+            }
+
             return 0;
         }
 
@@ -864,6 +1229,14 @@ namespace AvgSellPrice
             if (item is Weapon)
             {
                 return GetSingleItemPrice(item);
+            }
+
+            if (IsArmoredRig(item))
+            {
+                int rigPrice = GetArmoredRigBasePrice(item);
+                int platesPrice = GetArmorPlateTraderPrice(item);
+                int contentsPrice = GetContentsTraderPrice(item);
+                return rigPrice + platesPrice + contentsPrice;
             }
 
             if (IsRealContainer(item))
@@ -1290,6 +1663,11 @@ namespace AvgSellPrice
                 return false;
             }
 
+            if (IsArmoredRig(item))
+            {
+                return false;
+            }
+
             if (GetCachedBasePrice(item) > 0)
             {
                 return true;
@@ -1393,20 +1771,51 @@ namespace AvgSellPrice
                 }
             }
         }
+
         private static bool IsArmoredRig(Item item)
         {
-            if (!(item is VestItemClass))
+            if (item == null)
             {
                 return false;
             }
 
             try
             {
-                var armorProperty = item.GetType().GetProperty("ArmorComponent", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                if (armorProperty != null)
+                CompoundItem compound = item as CompoundItem;
+
+                if (compound != null && compound.Slots != null)
                 {
-                    object armorComponent = armorProperty.GetValue(item, null);
-                    return armorComponent != null;
+                    foreach (Slot slot in compound.Slots)
+                    {
+                        if (slot == null || string.IsNullOrEmpty(slot.Name))
+                        {
+                            continue;
+                        }
+
+                        string slotName = slot.Name.ToLowerInvariant();
+
+                        if (slotName.Contains("armor") ||
+                            slotName.Contains("plate") ||
+                            slotName.Contains("soft"))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                PropertyInfo armorProperty = item.GetType().GetProperty(
+                    "ArmorComponent",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+                if (armorProperty != null && armorProperty.GetValue(item, null) != null)
+                {
+                    return true;
                 }
             }
             catch
