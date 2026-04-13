@@ -240,8 +240,9 @@ namespace AvgSellPrice
 
                 if (contentsPrice > 0)
                 {
-                    rigLines.Add("Contents " + FormatPriceExternal(contentsPrice));
+                    rigLines.Add("Contents " + FormatContentsPriceVisual(contentsPrice));
                 }
+
 
                 if (platesPrice > 0 || contentsPrice > 0)
                 {
@@ -270,7 +271,7 @@ namespace AvgSellPrice
 
                 if (contentsPrice > 0)
                 {
-                    lines.Add("Contents " + FormatPriceExternal(contentsPrice));
+                    lines.Add("Contents " + FormatContentsPriceVisual(contentsPrice));
                     lines.Add("Total " + FormatPriceExternal(totalPrice));
                 }
 
@@ -357,6 +358,17 @@ namespace AvgSellPrice
 
             return rawPrice;
         }
+        private static string FormatContentsPriceVisual(int price)
+        {
+            if (price > 0 && price < 1000)
+            {
+                price = 1000;
+            }
+
+            return PluginConfig.PrecisePrice.Value
+                ? FormatPrecise(price)
+                : FormatPrice(price);
+        }
 
         public static int GetAveragePriceForExternal(Item item)
         {
@@ -423,8 +435,22 @@ namespace AvgSellPrice
                 return true;
             }
 
+            CompoundItem compound = item as CompoundItem;
+            if (compound != null && compound.Grids != null)
+            {
+                foreach (var grid in compound.Grids)
+                {
+                    if (grid != null)
+                    {
+                        return true;
+                    }
+                }
+            }
+
             return false;
         }
+
+
         private static bool IsHardPlateSlotName(string slotName)
         {
             if (string.IsNullOrEmpty(slotName))
