@@ -16,7 +16,6 @@ namespace AvgSellPrice
 
         public static ConfigEntry<PriceMode> ContainerPriceMode;
         public static ConfigEntry<bool> ShowTraderNameInTooltip;
-        public static ConfigEntry<bool> HideTooltipInTraderSellScreen;
 
         public static void Init(ConfigFile config)
         {
@@ -53,13 +52,6 @@ namespace AvgSellPrice
                 "ShowTraderNameInTooltip",
                 true,
                 "Show trader name in tooltip text."
-            );
-
-            HideTooltipInTraderSellScreen = config.Bind(
-                "UI",
-                "HideTooltipInTraderSellScreen",
-                true,
-                "Hide Approx Sell Price tooltip while inside trader sell screen."
             );
         }
     }

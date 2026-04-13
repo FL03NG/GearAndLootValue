@@ -289,10 +289,6 @@ namespace AvgSellPrice
 
         private static bool IsInTraderSellScreen()
         {
-            if (!PluginConfig.HideTooltipInTraderSellScreen.Value)
-            {
-                return false;
-            }
 
             try
             {

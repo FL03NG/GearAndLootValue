@@ -46,11 +46,6 @@ namespace AvgSellPrice
                     return;
                 }
 
-                if (PluginConfig.HideTooltipInTraderSellScreen.Value && LooksLikeTraderSellTooltip(text))
-                {
-                    text = RemoveTraderSellPriceLines(text);
-                }
-
                 string priceText = item.GetHoverPriceText();
 
                 if (string.IsNullOrEmpty(priceText))

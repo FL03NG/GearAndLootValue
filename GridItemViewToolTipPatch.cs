@@ -80,15 +80,6 @@ namespace AvgSellPrice
                 Plugin.Log?.LogInfo(
                     $"[AvgSellPrice] Tooltip owner type: ownerType={item.Owner?.OwnerType.ToString() ?? "NULL"} class={item.Owner?.GetType().Name ?? "NULL"}");
 
-                if (PluginConfig.HideTooltipInTraderSellScreen.Value &&
-                    item.Owner != null &&
-                    item.Owner.OwnerType != EOwnerType.Profile &&
-                    item.Owner.GetType().Name == "TraderControllerClass")
-                {
-                    return;
-                }
-
-
 
                 string priceBlock = item.GetHoverPriceText();
                 if (string.IsNullOrEmpty(priceBlock))
@@ -102,26 +93,6 @@ namespace AvgSellPrice
                 );
 
                 string originalText = null;
-
-                if (PluginConfig.HideTooltipInTraderSellScreen.Value &&
-                !string.IsNullOrEmpty(originalText))
-                {
-                    string lower = originalText.ToLowerInvariant();
-
-                    if (lower.Contains("prapor:") ||
-                        lower.Contains("therapist:") ||
-                        lower.Contains("fence:") ||
-                        lower.Contains("skier:") ||
-                        lower.Contains("peacekeeper:") ||
-                        lower.Contains("mechanic:") ||
-                        lower.Contains("ragman:") ||
-                        lower.Contains("jaeger:") ||
-                        lower.Contains("ref:"))
-                    {
-                        return;
-                    }
-                }
-
 
                 if (originalTextMethod != null)
                 {
