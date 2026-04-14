@@ -3,6 +3,7 @@ using EFT;
 using EFT.InventoryLogic;
 using SPT.Reflection.Patching;
 using System.Reflection;
+using UnityEngine;
 
 namespace AvgSellPrice
 {
@@ -48,6 +49,24 @@ namespace AvgSellPrice
 
             new SimpleTooltipShowPatch().Enable();
             Log.LogInfo("SimpleTooltipShowPatch enabled");
+
+            new PlayerItemAddedPatch().Enable();
+            Log.LogInfo("PlayerItemAddedPatch enabled");
+
+            new PlayerItemRemovedPatch().Enable();
+            Log.LogInfo("PlayerItemRemovedPatch enabled");
+
+            new RaidStartPatch().Enable();
+            Log.LogInfo("RaidStartPatch enabled");
+
+            new RaidEndPatch().Enable();
+            Log.LogInfo("RaidEndPatch enabled");
+
+            if (GetComponent<ValueDisplayUI>() == null)
+            {
+                gameObject.AddComponent<ValueDisplayUI>();
+                Log.LogInfo("ValueDisplayUI created");
+            }
         }
     }
 
