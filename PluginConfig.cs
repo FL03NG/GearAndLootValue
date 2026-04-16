@@ -79,7 +79,7 @@ namespace AvgSellPrice
             MainPriceColor = config.Bind(
                 "Colors",
                 "MainPriceColor",
-                new Color(0.77f, 0.75f, 0.70f, 1f),
+                new Color(1f, 0.82f, 0.40f, 1f),
                 "Color for the main price line."
             );
 
@@ -160,6 +160,14 @@ namespace AvgSellPrice
         {
             if (ColorsEqual(PlatesPriceColor.Value, LegacyPlatesColor) &&
                 ColorsEqual(TotalPriceColor.Value, LegacyTotalColor))
+            {
+                PlatesPriceColor.Value = DesiredPlatesColor;
+                TotalPriceColor.Value = DesiredTotalColor;
+                return;
+            }
+
+            if (ColorsEqual(PlatesPriceColor.Value, DesiredTotalColor) &&
+                ColorsEqual(TotalPriceColor.Value, DesiredPlatesColor))
             {
                 PlatesPriceColor.Value = DesiredPlatesColor;
                 TotalPriceColor.Value = DesiredTotalColor;

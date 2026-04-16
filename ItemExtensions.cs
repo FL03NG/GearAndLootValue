@@ -232,6 +232,58 @@ namespace AvgSellPrice
                 return string.Empty;
             }
 
+            if (item is AmmoItemClass)
+            {
+                TraderOffer ammoOffer = GetConfiguredTraderOffer(item);
+                int ammoPrice = GetSingleItemTotalSellPrice(item);
+
+                if (ammoOffer == null || ammoPrice <= 0)
+                {
+                    return string.Empty;
+                }
+
+                return Colorize(
+                    FormatMainPriceWithOptionalTrader(ammoOffer.Name, ammoPrice, applyMinimum: false),
+                    PluginConfig.MainPriceColor.Value);
+            }
+
+            if (IsMagazine(item))
+            {
+                TraderOffer totalOffer = GetConfiguredTraderOffer(item);
+                int ammoPrice = GetLoadedAmmoTraderPrice(item);
+                int totalPrice = totalOffer != null ? totalOffer.Price : 0;
+                int basePrice = totalPrice > 0
+                    ? Math.Max(0, totalPrice - ammoPrice)
+                    : GetSingleItemPrice(item);
+
+                if (basePrice <= 0 && totalPrice <= 0)
+                {
+                    return string.Empty;
+                }
+
+                string traderName = PluginConfig.ShowTraderNameInTooltip.Value && totalOffer != null
+                    ? totalOffer.Name
+                    : string.Empty;
+
+                List<string> magazineLines = new List<string>();
+                magazineLines.Add(Colorize(
+                    FormatMainPriceWithOptionalTrader(traderName, basePrice > 0 ? basePrice : totalPrice),
+                    PluginConfig.MainPriceColor.Value));
+
+                if (ammoPrice > 0)
+                {
+                    magazineLines.Add(Colorize(
+                        "Ammo " + FormatPriceExternal(ammoPrice),
+                        PluginConfig.ContentsPriceColor.Value));
+
+                    magazineLines.Add(Colorize(
+                        "Total " + FormatPriceExternal((basePrice > 0 ? basePrice : 0) + ammoPrice),
+                        PluginConfig.TotalPriceColor.Value));
+                }
+
+                return string.Join(Environment.NewLine, magazineLines);
+            }
+
             if (item is Weapon)
             {
                 TraderOffer weaponOffer = GetConfiguredTraderOffer(item);
@@ -249,9 +301,7 @@ namespace AvgSellPrice
             if (IsArmoredRig(item))
             {
                 TraderOffer rigOffer = GetArmoredRigTraderOffer(item);
-                int rigPrice = rigOffer != null && rigOffer.Price > 0
-                    ? rigOffer.Price
-                    : GetArmoredRigBasePrice(item);
+                int rigPrice = GetArmoredRigBasePrice(item);
 
                 if (rigPrice <= 0)
                 {
@@ -263,7 +313,7 @@ namespace AvgSellPrice
                 int totalPrice = rigPrice + platesPrice + contentsPrice;
 
                 string traderName = PluginConfig.ShowTraderNameInTooltip.Value
-                    ? rigOffer != null ? rigOffer.Name : string.Empty
+                    ? rigOffer != null ? rigOffer.Name : "Ragman"
                     : string.Empty;
 
                 List<string> rigLines = new List<string>();
@@ -331,10 +381,14 @@ namespace AvgSellPrice
 
             if (IsRealContainer(item))
             {
+                bool hasChildren = HasChildren(item);
                 TraderOffer containerOffer = GetContainerBaseTraderOffer(item);
-                int basePrice = containerOffer != null && containerOffer.Price > 0
-                    ? containerOffer.Price
-                    : GetContainerBasePriceRobust(item);
+                int basePrice = GetContainerBasePriceRobust(item);
+
+                if (containerOffer != null && containerOffer.Price > 0)
+                {
+                    basePrice = containerOffer.Price;
+                }
 
                 if (basePrice <= 0)
                 {
@@ -344,8 +398,8 @@ namespace AvgSellPrice
                 int contentsPrice = GetContentsTraderPrice(item);
                 int totalPrice = basePrice + contentsPrice;
 
-                string traderName = PluginConfig.ShowTraderNameInTooltip.Value && containerOffer != null
-                    ? containerOffer.Name
+                string traderName = PluginConfig.ShowTraderNameInTooltip.Value
+                    ? GetContainerBaseTraderName(item, containerOffer)
                     : string.Empty;
 
                 List<string> lines = new List<string>();
@@ -412,9 +466,9 @@ namespace AvgSellPrice
             return false;
         }
 
-        private static string FormatMainPriceWithOptionalTrader(string traderName, int rawPrice)
+        private static string FormatMainPriceWithOptionalTrader(string traderName, int rawPrice, bool applyMinimum = true)
         {
-            int price = ApplyMinimumPrice(rawPrice);
+            int price = applyMinimum ? ApplyMinimumPrice(rawPrice) : rawPrice;
 
             string formattedPrice = PluginConfig.PrecisePrice.Value
                 ? FormatPrecise(price)
@@ -427,6 +481,11 @@ namespace AvgSellPrice
                 if (showAround)
                 {
                     return "Around " + formattedPrice;
+                }
+
+                if (!PluginConfig.ShowTraderNameInTooltip.Value)
+                {
+                    return "Base " + formattedPrice;
                 }
 
                 return formattedPrice;
@@ -453,7 +512,7 @@ namespace AvgSellPrice
         }
         private static string FormatContentsPriceVisual(int price)
         {
-            if (price > 0 && price < 1000)
+            if (!PluginConfig.PrecisePrice.Value && price > 0 && price < 1000)
             {
                 price = 1000;
             }
@@ -927,6 +986,17 @@ namespace AvgSellPrice
             return TryGetItemSlotName(item, out string slotName) &&
                    IsArmorSlotName(slotName);
         }
+        private static bool IsItemInBuiltInSlot(Item item)
+        {
+            if (item == null)
+            {
+                return false;
+            }
+
+            return TryGetItemSlot(item, out Slot slot) &&
+                   IsBuiltInSlot(slot);
+        }
+
         private static bool TryGetLockedFromSlotProps(Slot slot, out bool locked)
         {
             locked = false;
@@ -980,6 +1050,22 @@ namespace AvgSellPrice
             return false;
         }
 
+        private static bool IsBuiltInSlot(Slot slot)
+        {
+            if (slot == null)
+            {
+                return false;
+            }
+
+            bool required;
+            bool locked;
+
+            bool hasRequired = TryGetSlotBoolField(slot, "_required", out required);
+            bool hasLocked = TryGetLockedFromSlotProps(slot, out locked);
+
+            return (hasRequired && required) || (hasLocked && locked);
+        }
+
         private static bool IsBuiltInArmorSlot(Slot slot)
         {
             if (slot == null)
@@ -992,13 +1078,7 @@ namespace AvgSellPrice
                 return false;
             }
 
-            bool required;
-            bool locked;
-
-            bool hasRequired = TryGetSlotBoolField(slot, "_required", out required);
-            bool hasLocked = TryGetLockedFromSlotProps(slot, out locked);
-
-            return (hasRequired && required) || (hasLocked && locked);
+            return IsBuiltInSlot(slot);
         }
 
         private static bool IsRemovableArmorSlot(Slot slot)
@@ -1074,6 +1154,11 @@ namespace AvgSellPrice
                         continue;
                     }
 
+                    if (IsBuiltInSlot(slot))
+                    {
+                        continue;
+                    }
+
                     int platePrice = GetAverageTraderPriceInternal(slot.ContainedItem);
 
                     if (platePrice <= 0)
@@ -1097,7 +1182,7 @@ namespace AvgSellPrice
                     continue;
                 }
 
-                if (!IsItemInHardPlateSlot(child))
+                if (!IsItemInHardPlateSlot(child) || IsItemInBuiltInSlot(child))
                 {
                     continue;
                 }
@@ -1268,7 +1353,11 @@ namespace AvgSellPrice
 
             if (offer != null && offer.Price > 0)
             {
-                CacheBasePrice(item, offer.Price);
+                if (!IsRealContainer(item))
+                {
+                    CacheBasePrice(item, offer.Price);
+                }
+
                 return offer.Price;
             }
 
@@ -1276,11 +1365,64 @@ namespace AvgSellPrice
 
             if (fallback > 0)
             {
-                CacheBasePrice(item, fallback);
+                if (!IsRealContainer(item))
+                {
+                    CacheBasePrice(item, fallback);
+                }
+
                 return fallback;
             }
 
             return 0;
+        }
+
+        private static int GetSingleItemTotalSellPrice(Item item)
+        {
+            if (item == null)
+            {
+                return 0;
+            }
+
+            int unitPrice = GetSingleItemPrice(item);
+            if (unitPrice <= 0)
+            {
+                return 0;
+            }
+
+            int stackCount = item.StackObjectsCount > 1 ? item.StackObjectsCount : 1;
+            return unitPrice * stackCount;
+        }
+
+        private static bool IsMagazine(Item item)
+        {
+            return item is MagazineItemClass;
+        }
+
+        private static int GetLoadedAmmoTraderPrice(Item item)
+        {
+            if (item == null)
+            {
+                return 0;
+            }
+
+            int total = 0;
+
+            foreach (Item child in item.GetAllItems())
+            {
+                if (child == null || child == item)
+                {
+                    continue;
+                }
+
+                if (!(child is AmmoItemClass))
+                {
+                    continue;
+                }
+
+                total += GetSingleItemTotalSellPrice(child);
+            }
+
+            return total;
         }
 
         private static int GetArmoredRigBasePrice(Item item)
@@ -1290,38 +1432,48 @@ namespace AvgSellPrice
                 return 0;
             }
 
-            try
+            string templateId = GetTemplateIdSafe(item);
+
+            int liveOfferPrice = GetArmoredRigBasePriceFromLiveOffer(item);
+            if (IsPlausibleArmoredRigBasePrice(item, liveOfferPrice))
             {
-                Item queryItem = BuildArmoredRigQueryItem(item);
-                if (queryItem != null)
+                if (!string.IsNullOrEmpty(templateId))
                 {
-                    TraderOffer queryOffer = GetConfiguredTraderOfferFromQueryItem(queryItem, item);
-                    if (queryOffer != null && queryOffer.Price > 0)
-                    {
-                        CacheBasePrice(item, queryOffer.Price);
-                        Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG base without hard plates {item.ShortName}: {queryOffer.Price}");
-                        return queryOffer.Price;
-                    }
+                    VerifiedArmoredRigPriceCache.StorePrice(templateId, liveOfferPrice);
+                }
+
+                Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG base from live offer {item.ShortName}: {liveOfferPrice}");
+                return liveOfferPrice;
+            }
+
+            int donorPrice = TryGetArmoredRigBasePriceFromEmptyIdenticalItem(item);
+            if (IsPlausibleArmoredRigBasePrice(item, donorPrice))
+            {
+                if (!string.IsNullOrEmpty(templateId))
+                {
+                    VerifiedArmoredRigPriceCache.StorePrice(templateId, donorPrice);
+                }
+
+                Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG base from empty donor {item.ShortName}: {donorPrice}");
+                return donorPrice;
+            }
+
+            if (!string.IsNullOrEmpty(templateId))
+            {
+                int verifiedRigPrice = VerifiedArmoredRigPriceCache.GetPrice(templateId);
+                if (IsPlausibleArmoredRigBasePrice(item, verifiedRigPrice))
+                {
+                    Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG base from verified cache {item.ShortName}: {verifiedRigPrice}");
+                    return verifiedRigPrice;
                 }
             }
-            catch (Exception ex)
-            {
-                Plugin.Log?.LogWarning($"[AvgSellPrice] Armored rig base query failed for {item.ShortName}: {ex.Message}");
-            }
 
-            int cachedPrice = GetCachedBasePrice(item);
-            if (cachedPrice > 0)
-            {
-                return cachedPrice;
-            }
-
-            string templateId = GetTemplateIdSafe(item);
             if (!string.IsNullOrEmpty(templateId))
             {
                 int serverPrice = TraderPriceCache.GetPrice(templateId);
                 if (serverPrice > 0)
                 {
-                    CacheBasePrice(item, serverPrice);
+                    Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG base from server price {item.ShortName}: {serverPrice}");
                     return serverPrice;
                 }
             }
@@ -1329,7 +1481,7 @@ namespace AvgSellPrice
             int fallback = GetTemplateFallbackPrice(item);
             if (fallback > 0)
             {
-                CacheBasePrice(item, fallback);
+                Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG base from handbook fallback {item.ShortName}: {fallback}");
                 return fallback;
             }
 
@@ -1344,35 +1496,75 @@ namespace AvgSellPrice
                 return null;
             }
 
-            try
+            TraderOffer liveOffer = GetConfiguredTraderOffer(item);
+            if (liveOffer != null && liveOffer.Price > 0)
             {
-                Item queryItem = BuildArmoredRigQueryItem(item);
-                if (queryItem == null)
-                {
-                    return null;
-                }
-
-                TraderOffer queryOffer = GetConfiguredTraderOfferFromQueryItem(queryItem, item);
-                if (queryOffer != null && queryOffer.Price > 0)
-                {
-                    Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG query price {item.ShortName}: {queryOffer.Price} via {queryOffer.Name}");
-                    return queryOffer;
-                }
-
-                TraderOffer originalOffer = GetConfiguredTraderOffer(item);
-                if (originalOffer != null && originalOffer.Price > 0)
-                {
-                    Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG fallback price {item.ShortName}: {originalOffer.Price} via {originalOffer.Name}");
-                    return originalOffer;
-                }
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log?.LogWarning($"[AvgSellPrice] Armored rig query failed for {item.ShortName}: {ex.Message}");
+                return liveOffer;
             }
 
             Plugin.Log?.LogWarning($"[AvgSellPrice] ARMORED RIG has no trader price: {item.ShortName}");
             return null;
+        }
+
+        private static bool IsPlausibleArmoredRigBasePrice(Item item, int price)
+        {
+            if (price <= 0)
+            {
+                return false;
+            }
+
+            int templateFallback = GetTemplateFallbackPrice(item);
+            if (templateFallback <= 0)
+            {
+                return price >= 5000;
+            }
+
+            int minimumExpected = Math.Max(5000, templateFallback / 2);
+            return price >= minimumExpected;
+        }
+
+        private static int GetArmoredRigBasePriceFromLiveOffer(Item item)
+        {
+            if (item == null)
+            {
+                return 0;
+            }
+
+            TraderOffer offer = GetConfiguredTraderOffer(item);
+            if (offer == null || offer.Price <= 0)
+            {
+                return 0;
+            }
+
+            int platesPrice = GetArmorPlateTraderPrice(item);
+            int contentsPrice = GetContentsTraderPrice(item);
+            return Math.Max(0, offer.Price - platesPrice - contentsPrice);
+        }
+
+        private static string GetContainerBaseTraderName(Item item, TraderOffer preferredOffer)
+        {
+            if (preferredOffer != null && !string.IsNullOrEmpty(preferredOffer.Name))
+            {
+                return preferredOffer.Name;
+            }
+
+            TraderOffer fallbackOffer = GetConfiguredTraderOffer(item);
+            if (fallbackOffer != null && !string.IsNullOrEmpty(fallbackOffer.Name))
+            {
+                return fallbackOffer.Name;
+            }
+
+            if (item is BackpackItemClass || item is VestItemClass)
+            {
+                return "Ragman";
+            }
+
+            if (IsRealContainer(item))
+            {
+                return "Therapist";
+            }
+
+            return string.Empty;
         }
 
         private static TraderOffer GetContainerBaseTraderOffer(Item item)
@@ -1382,9 +1574,11 @@ namespace AvgSellPrice
                 return null;
             }
 
+            bool hasChildren = HasChildren(item);
+
             try
             {
-                if (HasChildren(item))
+                if (hasChildren)
                 {
                     Item queryItem = BuildTraderQueryItem(
                         item,
@@ -1409,6 +1603,11 @@ namespace AvgSellPrice
                         Plugin.Log?.LogInfo($"[AvgSellPrice] CONTAINER stripped query price {item.ShortName}: {queryOffer.Price} via {queryOffer.Name}");
                         return queryOffer;
                     }
+                }
+
+                if (hasChildren)
+                {
+                    return null;
                 }
 
                 TraderOffer offer = GetConfiguredTraderOffer(item);
@@ -1492,7 +1691,7 @@ namespace AvgSellPrice
                     continue;
                 }
 
-                if (!IsHardPlateSlotName(slot.Name))
+                if (IsBuiltInSlot(slot))
                 {
                     continue;
                 }
@@ -1562,18 +1761,12 @@ namespace AvgSellPrice
                 return 0;
             }
 
+            bool hasChildren = HasChildren(item);
+
             int verifiedPrice = GetVerifiedContainerBasePrice(item);
             if (verifiedPrice > 0)
             {
-                CacheBasePrice(item, verifiedPrice);
                 return verifiedPrice;
-            }
-
-            int cachedPrice = GetCachedBasePrice(item);
-            if (cachedPrice > 0)
-            {
-                Plugin.Log?.LogInfo($"[AvgSellPrice] BASE cached {item.ShortName}: {cachedPrice}");
-                return cachedPrice;
             }
 
             int emptyClonePrice = GetEmptyCloneContainerPrice(item);
@@ -1598,7 +1791,6 @@ namespace AvgSellPrice
             if (serverPrice > 0)
             {
                 Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from server fallback {item.ShortName}: {serverPrice}");
-                CacheBasePrice(item, serverPrice);
                 return serverPrice;
             }
 
@@ -1606,7 +1798,6 @@ namespace AvgSellPrice
             if (templateFallback > 0)
             {
                 Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from handbook fallback {item.ShortName}: {templateFallback}");
-                CacheBasePrice(item, templateFallback);
                 return templateFallback;
             }
 
@@ -1702,6 +1893,54 @@ namespace AvgSellPrice
             return 0;
         }
 
+        private static int TryGetArmoredRigBasePriceFromEmptyIdenticalItem(Item item)
+        {
+            if (item == null)
+            {
+                return 0;
+            }
+
+            string templateId = GetTemplateIdSafe(item);
+            if (string.IsNullOrEmpty(templateId))
+            {
+                return 0;
+            }
+
+            List<Item> allItems = GetAllPlayerItemsSafe();
+
+            foreach (Item candidate in allItems)
+            {
+                if (candidate == null || ReferenceEquals(candidate, item))
+                {
+                    continue;
+                }
+
+                if (!IsArmoredRig(candidate))
+                {
+                    continue;
+                }
+
+                string candidateTemplateId = GetTemplateIdSafe(candidate);
+                if (!string.Equals(candidateTemplateId, templateId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (HasChildren(candidate))
+                {
+                    continue;
+                }
+
+                int price = GetArmoredRigBasePriceFromLiveOffer(candidate);
+                if (IsPlausibleArmoredRigBasePrice(candidate, price))
+                {
+                    return price;
+                }
+            }
+
+            return 0;
+        }
+
         private static int GetContainerBasePrice(Item item)
         {
             return GetContainerBasePriceRobust(item);
@@ -1715,25 +1954,39 @@ namespace AvgSellPrice
             }
 
             int total = 0;
+            List<Item> contentRoots = GetRootItems(
+                item.GetAllItems()
+                    .Where(child => ShouldCountAsContents(item, child))
+                    .ToList());
 
-            foreach (Item child in item.GetAllItems())
+            foreach (Item child in contentRoots)
             {
-                if (!ShouldCountAsContents(item, child))
-                {
-                    continue;
-                }
-
-                int childPrice = GetAverageTraderPriceInternal(child);
-
-                if (childPrice <= 0)
-                {
-                    childPrice = GetTemplateFallbackPrice(child);
-                }
+                int childPrice = GetContentsItemSellPrice(child);
 
                 total += childPrice;
             }
 
             return total;
+        }
+
+        private static int GetContentsItemSellPrice(Item item)
+        {
+            if (item == null)
+            {
+                return 0;
+            }
+
+            if (item is Weapon)
+            {
+                return GetSingleItemTotalSellPrice(item);
+            }
+
+            if (IsRealContainer(item) || IsArmoredRig(item))
+            {
+                return GetDisplayMainPrice(item);
+            }
+
+            return GetSingleItemTotalSellPrice(item);
         }
 
         private static int GetDisplayMainPrice(Item item)
@@ -2288,6 +2541,79 @@ namespace AvgSellPrice
             }
         }
 
+        private static void AddItemsFromUnknownValue(object value, HashSet<string> uniqueIds, List<Item> result)
+        {
+            if (value == null || result == null)
+            {
+                return;
+            }
+
+            Item singleItem = value as Item;
+            if (singleItem != null)
+            {
+                if (string.IsNullOrEmpty(singleItem.Id) || uniqueIds.Add(singleItem.Id))
+                {
+                    result.Add(singleItem);
+                }
+
+                return;
+            }
+
+            IEnumerable enumerable = value as IEnumerable;
+            if (enumerable == null)
+            {
+                return;
+            }
+
+            foreach (object entry in enumerable)
+            {
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                Item entryItem = entry as Item;
+                if (entryItem != null)
+                {
+                    if (string.IsNullOrEmpty(entryItem.Id) || uniqueIds.Add(entryItem.Id))
+                    {
+                        result.Add(entryItem);
+                    }
+
+                    continue;
+                }
+
+                Type entryType = entry.GetType();
+                PropertyInfo itemProperty = entryType.GetProperty(
+                    "Item",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+                if (itemProperty != null && typeof(Item).IsAssignableFrom(itemProperty.PropertyType))
+                {
+                    Item propertyItem = itemProperty.GetValue(entry, null) as Item;
+                    if (propertyItem != null && (string.IsNullOrEmpty(propertyItem.Id) || uniqueIds.Add(propertyItem.Id)))
+                    {
+                        result.Add(propertyItem);
+                    }
+
+                    continue;
+                }
+
+                FieldInfo itemField = entryType.GetField(
+                    "Item",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+                if (itemField != null && typeof(Item).IsAssignableFrom(itemField.FieldType))
+                {
+                    Item fieldItem = itemField.GetValue(entry) as Item;
+                    if (fieldItem != null && (string.IsNullOrEmpty(fieldItem.Id) || uniqueIds.Add(fieldItem.Id)))
+                    {
+                        result.Add(fieldItem);
+                    }
+                }
+            }
+        }
+
         private static bool IsArmoredRig(Item item)
         {
             if (item == null)
@@ -2401,3 +2727,5 @@ namespace AvgSellPrice
         }
     }
 }
+
+

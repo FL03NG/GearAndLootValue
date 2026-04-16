@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using TMPro;
@@ -12,6 +13,8 @@ namespace AvgSellPrice
     {
         private const string EquipmentLabelObjectName = "AvgSellPriceEquipmentValue";
         private const string RaidLabelObjectName = "AvgSellPriceLootValue";
+        private const float PassiveEquipmentRefreshInterval = 2.5f;
+        private const float TraderUiScanInterval = 2.5f;
 
         private static readonly Regex EquipmentWeightRegex =
             new Regex(@"^\s*\d+([.,]\d+)?\s*kg\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -19,11 +22,18 @@ namespace AvgSellPrice
         private static readonly Regex RaidWeightRegex =
             new Regex(@"^\s*\d+\s*/\s*\d+\s*(kg)?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+        private static readonly Regex StatValueRegex =
+            new Regex(@"^\s*\d+(?:[.,]\d+)?\s*/\s*\d+(?:[.,]\d+)?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
         internal static ValueDisplayUI Instance { get; private set; }
 
         private bool _pendingRefresh = true;
         private float _nextAnchorSearchTime;
         private float _nextPassiveEquipmentRefreshTime;
+        private float _nextTraderUiScanTime;
+        private bool _isTraderSellUiVisible;
+        private bool _equipmentValueDirty = true;
+        private int _cachedEquipmentValue = -1;
         private TextMeshProUGUI _equipmentAnchor;
         private TextMeshProUGUI _raidAnchor;
         private GameObject _equipmentBox;
@@ -64,7 +74,7 @@ namespace AvgSellPrice
 
             if (!ValueTracker.IsInRaid && Time.unscaledTime >= _nextPassiveEquipmentRefreshTime)
             {
-                _nextPassiveEquipmentRefreshTime = Time.unscaledTime + 0.75f;
+                _nextPassiveEquipmentRefreshTime = Time.unscaledTime + PassiveEquipmentRefreshInterval;
                 RefreshEquipmentLabel();
             }
         }
@@ -73,6 +83,8 @@ namespace AvgSellPrice
         {
             if (Instance != null)
             {
+                Instance._equipmentValueDirty = true;
+                Instance._nextTraderUiScanTime = 0f;
                 Instance._pendingRefresh = true;
             }
         }
@@ -92,6 +104,12 @@ namespace AvgSellPrice
 
         private void RefreshEquipmentLabel()
         {
+            if (IsTraderSellUiVisible())
+            {
+                HideLabel(_equipmentLabel);
+                return;
+            }
+
             TextMeshProUGUI anchor = GetEquipmentAnchor();
             if (anchor == null)
             {
@@ -104,15 +122,15 @@ namespace AvgSellPrice
                 ref _equipmentLabel,
                 anchor,
                 EquipmentLabelObjectName,
-                "Equipment Value",
-                new Vector2(-18f, 42f),
-                280f,
-                42f,
-                1.08f);
+                string.Empty,
+                new Vector2(-69f, 54f),
+                493f,
+                50f,
+                2.36f);
 
             int value = ItemExtensions.GetPlayerEquipmentValue();
-            _equipmentLabel.text = $"{ItemExtensions.FormatMoneyUi(value)} ₽";
-            _equipmentLabel.color = Color.white;
+            _equipmentLabel.text = $"Equipment Value: <b>{ItemExtensions.FormatMoneyUi(value)} ₽</b>";
+            _equipmentLabel.color = new Color(0.92f, 0.92f, 0.93f, 1f);
             _equipmentBox.SetActive(true);
         }
 
@@ -130,14 +148,14 @@ namespace AvgSellPrice
                 ref _raidLabel,
                 anchor,
                 RaidLabelObjectName,
-                "Loot Value",
-                new Vector2(4f, 68f),
-                220f,
-                40f,
-                1.05f);
+                string.Empty,
+                new Vector2(-69f, 54f),
+                493f,
+                50f,
+                2.36f);
 
             int value = ValueTracker.CurrentRaidLootValue;
-            _raidLabel.text = $"{ItemExtensions.FormatMoneyUi(value)} ₽";
+            _raidLabel.text = $"<b>{ItemExtensions.FormatMoneyUi(value)} ₽</b>";
             _raidLabel.color = GetRaidValueColor(value);
             _raidBox.SetActive(true);
         }
@@ -178,16 +196,17 @@ namespace AvgSellPrice
 
             labelRect.anchorMin = Vector2.zero;
             labelRect.anchorMax = Vector2.one;
-            labelRect.offsetMin = new Vector2(8f, 4f);
-            labelRect.offsetMax = new Vector2(-8f, -4f);
+            labelRect.offsetMin = new Vector2(8f, 1f);
+            labelRect.offsetMax = new Vector2(-8f, -1f);
 
             label.text = title;
-            label.fontSize = Mathf.Max(13f, anchor.fontSize * fontScale);
+            label.fontSize = Mathf.Max(12f, anchor.fontSize * fontScale);
             label.enableAutoSizing = false;
             label.enableWordWrapping = false;
             label.overflowMode = TextOverflowModes.Overflow;
             label.alignment = TextAlignmentOptions.MidlineLeft;
             label.raycastTarget = false;
+            label.fontStyle = FontStyles.Normal;
 
             return label;
         }
@@ -198,11 +217,11 @@ namespace AvgSellPrice
             box.transform.SetParent(parent, false);
 
             Image image = box.GetComponent<Image>();
-            image.color = new Color(0.24f, 0.25f, 0.27f, 0.92f);
+            image.color = new Color(0.07f, 0.07f, 0.08f, 0.94f);
             image.raycastTarget = false;
 
             Outline outline = box.GetComponent<Outline>();
-            outline.effectColor = new Color(0.56f, 0.58f, 0.61f, 0.90f);
+            outline.effectColor = new Color(0.18f, 0.18f, 0.19f, 0.95f);
             outline.effectDistance = new Vector2(1f, -1f);
 
             GameObject textObject = new GameObject(objectName + "Text", typeof(RectTransform), typeof(TextMeshProUGUI));
@@ -220,6 +239,10 @@ namespace AvgSellPrice
             _equipmentAnchor = null;
             _raidAnchor = null;
             _nextAnchorSearchTime = 0f;
+            _nextTraderUiScanTime = 0f;
+            _isTraderSellUiVisible = false;
+            _equipmentValueDirty = true;
+            _cachedEquipmentValue = -1;
             _pendingRefresh = true;
         }
 
@@ -272,15 +295,69 @@ namespace AvgSellPrice
             }
         }
 
+
+        private bool IsTraderSellUiVisible()
+        {
+            if (Time.unscaledTime < _nextTraderUiScanTime)
+            {
+                return _isTraderSellUiVisible;
+            }
+
+            _nextTraderUiScanTime = Time.unscaledTime + TraderUiScanInterval;
+
+            try
+            {
+                HashSet<string> visibleTexts = Resources.FindObjectsOfTypeAll<TextMeshProUGUI>()
+                    .Where(IsUsableTextComponent)
+                    .Select(text => NormalizeText(text.text))
+                    .Where(text => !string.IsNullOrEmpty(text))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                bool hasDeal = visibleTexts.Contains("DEAL!");
+                bool hasBuy = visibleTexts.Contains("BUY");
+                bool hasSell = visibleTexts.Contains("SELL");
+
+                _isTraderSellUiVisible = hasDeal && hasBuy && hasSell;
+                return _isTraderSellUiVisible;
+            }
+            catch
+            {
+                _isTraderSellUiVisible = false;
+                return false;
+            }
+        }
+
+        private int GetCachedEquipmentValue()
+        {
+            if (_equipmentValueDirty || _cachedEquipmentValue < 0)
+            {
+                _cachedEquipmentValue = ItemExtensions.GetPlayerEquipmentValue();
+                _equipmentValueDirty = false;
+            }
+
+            return _cachedEquipmentValue;
+        }
+
+
+
         private static TextMeshProUGUI FindEquipmentAnchor()
         {
-            return FindBestAnchor(text =>
-            {
-                string normalized = NormalizeText(text);
+            TextMeshProUGUI[] candidates = Resources.FindObjectsOfTypeAll<TextMeshProUGUI>()
+                .Where(IsUsableTextComponent)
+                .Where(text =>
+                {
+                    string normalized = NormalizeText(text.text);
 
-                return EquipmentWeightRegex.IsMatch(normalized) ||
-                       string.Equals(normalized, "kg", StringComparison.OrdinalIgnoreCase);
-            });
+                    return EquipmentWeightRegex.IsMatch(normalized) ||
+                           string.Equals(normalized, "kg", StringComparison.OrdinalIgnoreCase);
+                })
+                .ToArray();
+
+            return candidates
+                .OrderByDescending(GetEquipmentAnchorScore)
+                .ThenBy(text => GetScreenPoint(text).y)
+                .ThenBy(text => GetScreenPoint(text).x)
+                .FirstOrDefault();
         }
 
         private static TextMeshProUGUI FindRaidAnchor()
@@ -292,6 +369,84 @@ namespace AvgSellPrice
                 return string.Equals(normalized, "kg", StringComparison.OrdinalIgnoreCase) ||
                        RaidWeightRegex.IsMatch(normalized);
             });
+        }
+
+        private static int GetEquipmentAnchorScore(TextMeshProUGUI text)
+        {
+            if (text == null)
+            {
+                return int.MinValue;
+            }
+
+            int score = 0;
+            Vector2 screenPoint = GetScreenPoint(text);
+            float screenWidth = Mathf.Max(1f, Screen.width);
+            float screenHeight = Mathf.Max(1f, Screen.height);
+
+            if (screenPoint.x <= screenWidth * 0.6f)
+            {
+                score += 4;
+            }
+
+            if (screenPoint.y <= screenHeight * 0.45f)
+            {
+                score += 4;
+            }
+
+            score += CountNearbySlashStats(text, 4) * 10;
+            score += CountNearbyKnownStatValues(text, 4) * 6;
+
+            return score;
+        }
+
+        private static int CountNearbySlashStats(TextMeshProUGUI anchor, int maxAncestorDepth)
+        {
+            return EnumerateNearbyTexts(anchor, maxAncestorDepth)
+                .Select(text => NormalizeText(text.text))
+                .Count(value => StatValueRegex.IsMatch(value));
+        }
+
+        private static int CountNearbyKnownStatValues(TextMeshProUGUI anchor, int maxAncestorDepth)
+        {
+            return EnumerateNearbyTexts(anchor, maxAncestorDepth)
+                .Select(text => NormalizeText(text.text))
+                .Count(value =>
+                    string.Equals(value, "HP", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "kg", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "hydration", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(value, "energy", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static TextMeshProUGUI[] EnumerateNearbyTexts(TextMeshProUGUI anchor, int maxAncestorDepth)
+        {
+            Transform current = anchor != null ? anchor.transform : null;
+
+            for (int depth = 0; current != null && depth <= maxAncestorDepth; depth++)
+            {
+                TextMeshProUGUI[] texts = current.GetComponentsInChildren<TextMeshProUGUI>(true)
+                    .Where(IsUsableTextComponent)
+                    .ToArray();
+
+                if (texts.Length >= 4)
+                {
+                    return texts;
+                }
+
+                current = current.parent;
+            }
+
+            return Array.Empty<TextMeshProUGUI>();
+        }
+
+        private static Vector2 GetScreenPoint(TextMeshProUGUI text)
+        {
+            if (text == null || text.rectTransform == null)
+            {
+                return Vector2.zero;
+            }
+
+            Vector3 position = text.rectTransform.position;
+            return new Vector2(position.x, position.y);
         }
 
         private static TextMeshProUGUI FindBestAnchor(Func<string, bool> predicate)
@@ -370,3 +525,7 @@ namespace AvgSellPrice
         }
     }
 }
+
+
+
+

@@ -53,6 +53,8 @@ namespace AvgSellPrice
                     return;
                 }
 
+                text = RemoveTraderSellPriceLines(text);
+
                 string itemName = item.ShortName;
 
                 if (!string.IsNullOrEmpty(itemName))
@@ -140,14 +142,23 @@ namespace AvgSellPrice
             string normalized = NormalizeTooltipText(line).Trim();
 
             return normalized.StartsWith("prapor:") ||
+                   normalized.StartsWith("prapor ") ||
                    normalized.StartsWith("therapist:") ||
+                   normalized.StartsWith("therapist ") ||
                    normalized.StartsWith("fence:") ||
+                   normalized.StartsWith("fence ") ||
                    normalized.StartsWith("skier:") ||
+                   normalized.StartsWith("skier ") ||
                    normalized.StartsWith("peacekeeper:") ||
+                   normalized.StartsWith("peacekeeper ") ||
                    normalized.StartsWith("mechanic:") ||
+                   normalized.StartsWith("mechanic ") ||
                    normalized.StartsWith("ragman:") ||
+                   normalized.StartsWith("ragman ") ||
                    normalized.StartsWith("jaeger:") ||
-                   normalized.StartsWith("ref:");
+                   normalized.StartsWith("jaeger ") ||
+                   normalized.StartsWith("ref:") ||
+                   normalized.StartsWith("ref ");
         }
 
         private static string NormalizeTooltipText(string text)

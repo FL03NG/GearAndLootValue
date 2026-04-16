@@ -1,4 +1,4 @@
-﻿using BepInEx;
+using BepInEx;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -18,7 +18,7 @@ namespace AvgSellPrice
             {
                 string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
                 string configDirectory = Path.Combine(baseDirectory, "BepInEx", "config");
-                return Path.Combine(configDirectory, "AvgSellPrice.VerifiedArmoredRigPrices.json");
+                return Path.Combine(configDirectory, "AvgSellPrice.VerifiedArmoredRigPrices.v3.json");
             }
         }
 
@@ -139,3 +139,4 @@ namespace AvgSellPrice
         }
     }
 }
+
