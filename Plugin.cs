@@ -29,6 +29,9 @@ namespace AvgSellPrice
             TraderPriceCache.Load();
             Log.LogInfo("TraderPriceCache.Load called");
 
+            FleaPriceCache.Load();
+            Log.LogInfo("FleaPriceCache.Load called");
+
             new TraderPatch().Enable();
             Log.LogInfo("TraderPatch enabled");
 
@@ -61,6 +64,9 @@ namespace AvgSellPrice
 
             new RaidEndPatch().Enable();
             Log.LogInfo("RaidEndPatch enabled");
+
+            new ContainersPanelShowPatch().Enable();
+            Log.LogInfo("ContainersPanelShowPatch enabled");
 
             if (GetComponent<ValueDisplayUI>() == null)
             {

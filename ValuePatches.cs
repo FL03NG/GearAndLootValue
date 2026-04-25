@@ -1,4 +1,5 @@
 using EFT;
+using EFT.UI;
 using EFT.UI.SessionEnd;
 using HarmonyLib;
 using SPT.Reflection.Patching;
@@ -6,6 +7,11 @@ using System.Reflection;
 
 namespace AvgSellPrice
 {
+    internal static class RaidPlayerState
+    {
+        public static Player MainPlayer { get; set; }
+    }
+
     internal class PlayerItemAddedPatch : ModulePatch
     {
         protected override MethodBase GetTargetMethod()
@@ -14,15 +20,16 @@ namespace AvgSellPrice
         }
 
         [PatchPostfix]
-        private static void PatchPostfix()
+        private static void PatchPostfix(object __instance, GEventArgs1 eventArgs)
         {
-            if (!ValueTracker.IsInRaid)
+            if (!ValueTracker.IsInRaid || !ReferenceEquals(__instance, RaidPlayerState.MainPlayer))
             {
                 return;
             }
 
-            ValueTracker.RefreshRaidLootValue();
-            ValueDisplayUI.RequestRefresh();
+            ValueTracker.HandleItemAdded(eventArgs?.Item);
+            ValueDisplayUI.RequestRaidItemReconcile(eventArgs?.Item);
+            ValueDisplayUI.RequestRaidValueTextRefresh();
         }
     }
 
@@ -34,15 +41,15 @@ namespace AvgSellPrice
         }
 
         [PatchPostfix]
-        private static void PatchPostfix()
+        private static void PatchPostfix(object __instance, GEventArgs3 eventArgs)
         {
-            if (!ValueTracker.IsInRaid)
+            if (!ValueTracker.IsInRaid || !ReferenceEquals(__instance, RaidPlayerState.MainPlayer))
             {
                 return;
             }
 
-            ValueTracker.RefreshRaidLootValue();
-            ValueDisplayUI.RequestRefresh();
+            ValueTracker.HandleItemRemoved(eventArgs?.Item);
+            ValueDisplayUI.RequestRaidValueTextRefresh();
         }
     }
 
@@ -56,10 +63,12 @@ namespace AvgSellPrice
         }
 
         [PatchPostfix]
-        private static void PatchPostfix()
+        private static void PatchPostfix(GameWorld __instance)
         {
+            RaidPlayerState.MainPlayer = __instance?.MainPlayer;
             ValueTracker.BeginRaid();
             ValueDisplayUI.RequestRefresh();
+            ValueDisplayUI.RequestRaidLabelCreate(1f);
         }
     }
 
@@ -75,8 +84,23 @@ namespace AvgSellPrice
         [PatchPostfix]
         private static void PatchPostfix()
         {
+            RaidPlayerState.MainPlayer = null;
             ValueTracker.EndRaid();
             ValueDisplayUI.RequestRefresh();
+        }
+    }
+
+    internal class ContainersPanelShowPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod()
+        {
+            return AccessTools.Method(typeof(ContainersPanel), "Show");
+        }
+
+        [PatchPostfix]
+        private static void PatchPostfix()
+        {
+            ValueDisplayUI.SetRaidInventoryVisible(true);
         }
     }
 }

@@ -10,6 +10,12 @@ namespace AvgSellPrice
         Best = 1
     }
 
+    public enum PriceSource
+    {
+        TraderSell = 0,
+        FleaMarket = 1
+    }
+
     internal static class PluginConfig
     {
         private static readonly Color LegacyPlatesColor = new Color(1f, 0.82f, 0.40f, 1f);
@@ -22,9 +28,16 @@ namespace AvgSellPrice
         public static ConfigEntry<int> MinimumDisplayPrice;
 
         public static ConfigEntry<PriceMode> ContainerPriceMode;
+        public static ConfigEntry<PriceSource> ItemPriceSource;
         public static ConfigEntry<bool> ShowTraderNameInTooltip;
+        public static ConfigEntry<bool> ShowWeaponAttachmentsPrice;
+        public static ConfigEntry<bool> ShowEquipmentValue;
+        public static ConfigEntry<bool> ShowRaidLootValue;
+        public static ConfigEntry<bool> IncludeAmmoInValues;
+        public static ConfigEntry<bool> IncludeCasesInValues;
         public static ConfigEntry<Color> MainPriceColor;
         public static ConfigEntry<Color> ContentsPriceColor;
+        public static ConfigEntry<Color> AmmoPriceColor;
         public static ConfigEntry<Color> PlatesPriceColor;
         public static ConfigEntry<Color> TotalPriceColor;
 
@@ -70,12 +83,55 @@ namespace AvgSellPrice
                 "Choose how trader prices are selected: Average or Best."
             );
 
+            ItemPriceSource = config.Bind(
+                "Pricing",
+                "ItemPriceSource",
+                PriceSource.TraderSell,
+                "Choose whether item values use trader sell prices or flea market prices."
+            );
+
             ShowTraderNameInTooltip = config.Bind(
                 "Pricing",
                 "ShowTraderNameInTooltip",
                 true,
                 "Show trader name in tooltip text."
             );
+
+            ShowWeaponAttachmentsPrice = config.Bind(
+                "Pricing",
+                "ShowWeaponAttachmentsPrice",
+                true,
+                "Show weapon attachment price breakdown in weapon tooltips."
+            );
+
+            ShowEquipmentValue = config.Bind(
+                "Value Display",
+                "ShowEquipmentValue",
+                true,
+                "Show equipment value outside raids."
+            );
+
+            ShowRaidLootValue = config.Bind(
+                "Value Display",
+                "ShowRaidLootValue",
+                true,
+                "Show loot value during raids."
+            );
+
+            IncludeAmmoInValues = config.Bind(
+                "Value Display",
+                "IncludeAmmoInValues",
+                true,
+                "Include loose ammo in equipment and raid loot values."
+            );
+
+            IncludeCasesInValues = config.Bind(
+                "Value Display",
+                "IncludeCasesInValues",
+                true,
+                "Include cases and containers in equipment and raid loot values."
+            );
+
             MainPriceColor = config.Bind(
                 "Colors",
                 "MainPriceColor",
@@ -88,6 +144,13 @@ namespace AvgSellPrice
                 "ContentsPriceColor",
                 new Color(0.56f, 0.83f, 1f, 1f),
                 "Color for the contents price line."
+            );
+
+            AmmoPriceColor = config.Bind(
+                "Colors",
+                "AmmoPriceColor",
+                new Color(0.56f, 0.83f, 1f, 1f),
+                "Color for the ammo price line inside magazines."
             );
 
             PlatesPriceColor = config.Bind(

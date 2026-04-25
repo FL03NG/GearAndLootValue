@@ -42,5 +42,14 @@
     <Reference Include="UnityEngine.UI">
       <HintPath>..\..\..\..\..\SPT\EscapeFromTarkov_Data\Managed\UnityEngine.UI.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>..\..\..\..\..\SPT\EscapeFromTarkov_Data\Managed\UnityEngine.UIModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>..\..\..\..\..\SPT\EscapeFromTarkov_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+    </Reference>
   </ItemGroup>
+  <Target Name="CopyToBepInExPlugins" AfterTargets="Build" Condition="'$(DeployToSpt)' == 'true'">
+    <Copy SourceFiles="$(OutputPath)AvgSellPrice.dll" DestinationFolder="C:\SPT\BepInEx\plugins" />
+  </Target>
 </Project>
