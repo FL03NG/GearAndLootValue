@@ -16,10 +16,12 @@ namespace AvgSellPrice
         public static int CurrentRaidLootValue { get; private set; }
 
         public static bool IsInRaid { get; private set; }
+        public static bool BaselineWarmupActive { get; private set; }
 
         public static void BeginRaid()
         {
             IsInRaid = true;
+            BaselineWarmupActive = true;
             CurrentRaidLootValue = 0;
             CountedLootValuesByItemId.Clear();
 
@@ -29,9 +31,36 @@ namespace AvgSellPrice
         public static void EndRaid()
         {
             IsInRaid = false;
+            BaselineWarmupActive = false;
             CurrentRaidLootValue = 0;
             BaselineItemIds.Clear();
             CountedLootValuesByItemId.Clear();
+        }
+
+        public static void WarmupBaselineFromCurrentInventory()
+        {
+            if (!IsInRaid || !BaselineWarmupActive)
+            {
+                return;
+            }
+
+            foreach (Item item in ItemExtensions.GetAllPlayerItemsSafe())
+            {
+                if (item == null || string.IsNullOrEmpty(item.Id))
+                {
+                    continue;
+                }
+
+                BaselineItemIds.Add(item.Id);
+            }
+
+            CountedLootValuesByItemId.Clear();
+            CurrentRaidLootValue = 0;
+        }
+
+        public static void EndBaselineWarmup()
+        {
+            BaselineWarmupActive = false;
         }
 
         public static void HandleItemAdded(Item rootItem)

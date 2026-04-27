@@ -49,6 +49,7 @@ namespace AvgSellPrice
             }
 
             ValueTracker.HandleItemRemoved(eventArgs?.Item);
+            ValueDisplayUI.RequestRaidItemReconcile(eventArgs?.Item);
             ValueDisplayUI.RequestRaidValueTextRefresh();
         }
     }
@@ -67,6 +68,7 @@ namespace AvgSellPrice
         {
             RaidPlayerState.MainPlayer = __instance?.MainPlayer;
             ValueTracker.BeginRaid();
+            ValueDisplayUI.BeginBaselineWarmup();
             ValueDisplayUI.RequestRefresh();
             ValueDisplayUI.RequestRaidLabelCreate(1f);
         }

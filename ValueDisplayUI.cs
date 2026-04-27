@@ -33,6 +33,8 @@ namespace AvgSellPrice
         private float _nextEquipmentAnchorSearchTime;
         private float _nextRaidAnchorSearchTime;
         private float _nextRaidLabelCreateTime;
+        private float _nextBaselineWarmupTime;
+        private float _baselineWarmupEndTime;
         private float _nextPassiveEquipmentRefreshTime;
         private float _nextTraderUiScanTime;
         private bool _raidLabelCreatePending;
@@ -82,6 +84,8 @@ namespace AvgSellPrice
 
             if (ValueTracker.IsInRaid)
             {
+                ProcessBaselineWarmup();
+
                 if ((Input.GetKeyDown(KeyCode.Tab) || Input.GetKeyDown(KeyCode.Escape)) &&
                     _raidOverlayCanvas != null &&
                     _raidOverlayCanvas.gameObject != null)
@@ -137,13 +141,25 @@ namespace AvgSellPrice
             }
         }
 
-        internal static void RequestRaidItemReconcile(Item item, float delaySeconds = 0.75f)
+        internal static void BeginBaselineWarmup(float durationSeconds = 6f)
         {
-            if (Instance == null || item == null || !ItemExtensions.MayContainConfiguredValueContents(item))
+            if (Instance == null)
             {
                 return;
             }
 
+            Instance._baselineWarmupEndTime = Time.unscaledTime + Mathf.Max(0f, durationSeconds);
+            Instance._nextBaselineWarmupTime = 0f;
+        }
+
+        internal static void RequestRaidItemReconcile(Item item, float delaySeconds = 0.75f)
+        {
+            if (Instance == null || item == null || !ItemExtensions.RequiresRaidLootRebuildOnChange(item))
+            {
+                return;
+            }
+
+            Instance.AddPendingItemReconcile(item, 0f);
             Instance.AddPendingItemReconcile(item, 0.1f);
             Instance.AddPendingItemReconcile(item, 0.5f);
             Instance.AddPendingItemReconcile(item, 1.5f);
@@ -299,6 +315,31 @@ namespace AvgSellPrice
             }
         }
 
+        private void ProcessBaselineWarmup()
+        {
+            if (!ValueTracker.BaselineWarmupActive)
+            {
+                return;
+            }
+
+            if (Time.unscaledTime >= _baselineWarmupEndTime)
+            {
+                ValueTracker.WarmupBaselineFromCurrentInventory();
+                ValueTracker.EndBaselineWarmup();
+                RefreshRaidLabelTextOnly();
+                return;
+            }
+
+            if (Time.unscaledTime < _nextBaselineWarmupTime)
+            {
+                return;
+            }
+
+            _nextBaselineWarmupTime = Time.unscaledTime + 1f;
+            ValueTracker.WarmupBaselineFromCurrentInventory();
+            RefreshRaidLabelTextOnly();
+        }
+
         private void AddPendingItemReconcile(Item item, float delaySeconds)
         {
             _pendingItemReconciles.Add(new PendingItemReconcile(
@@ -416,7 +457,7 @@ namespace AvgSellPrice
             boxRect.anchorMin = new Vector2(0f, 0f);
             boxRect.anchorMax = new Vector2(0f, 0f);
             boxRect.pivot = new Vector2(0f, 0f);
-            boxRect.anchoredPosition = new Vector2(24f, 112f);
+            boxRect.anchoredPosition = new Vector2(68f, 214f);
             boxRect.sizeDelta = new Vector2(493f, 50f);
             boxRect.localScale = Vector3.one;
             boxRect.localRotation = Quaternion.identity;
@@ -468,6 +509,8 @@ namespace AvgSellPrice
             _nextEquipmentAnchorSearchTime = 0f;
             _nextRaidAnchorSearchTime = 0f;
             _nextRaidLabelCreateTime = 0f;
+            _nextBaselineWarmupTime = 0f;
+            _baselineWarmupEndTime = 0f;
             _raidLabelCreatePending = false;
             _raidLabelCreateAttempts = 0;
             _pendingItemReconciles.Clear();

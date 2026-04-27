@@ -122,14 +122,14 @@ namespace AvgSellPrice
                 "Value Display",
                 "IncludeAmmoInValues",
                 true,
-                "Include loose ammo in equipment and raid loot values."
+                "Show loaded ammo value in magazine tooltips."
             );
 
             IncludeCasesInValues = config.Bind(
                 "Value Display",
                 "IncludeCasesInValues",
                 true,
-                "Include cases and containers in equipment and raid loot values."
+                "Show case and container value tooltips."
             );
 
             MainPriceColor = config.Bind(

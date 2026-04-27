@@ -254,12 +254,14 @@ namespace AvgSellPrice
 
             if (IsMagazine(item))
             {
+                bool includeMagazineAmmo = PluginConfig.IncludeAmmoInValues == null ||
+                                           PluginConfig.IncludeAmmoInValues.Value;
                 TraderOffer totalOffer = GetConfiguredTraderOffer(item);
-                int ammoPrice = GetLoadedAmmoTraderPrice(item);
+                int ammoPrice = includeMagazineAmmo ? GetLoadedAmmoTraderPrice(item) : 0;
                 int totalPrice = totalOffer != null ? totalOffer.Price : 0;
                 int basePrice = UseFleaPriceSource
                     ? GetSingleItemPrice(item)
-                    : totalPrice > 0
+                    : includeMagazineAmmo && totalPrice > 0
                         ? Math.Max(0, totalPrice - ammoPrice)
                         : GetSingleItemPrice(item);
 
@@ -398,18 +400,24 @@ namespace AvgSellPrice
                     return string.Empty;
                 }
 
+                string traderName = PluginConfig.ShowTraderNameInTooltip.Value
+                    ? rigOffer != null ? rigOffer.Name : "Ragman"
+                    : string.Empty;
+                string baseLine = Colorize(
+                    FormatMainPriceWithOptionalTrader(traderName, rigPrice),
+                    PluginConfig.MainPriceColor.Value);
+
+                if (ShouldHideContentsForUnsearchedItem(item))
+                {
+                    return baseLine + Environment.NewLine + GetUnsearchedHoverLine();
+                }
+
                 int platesPrice = GetArmorPlateTraderPrice(item);
                 int contentsPrice = GetContentsTraderPrice(item);
                 int totalPrice = rigPrice + platesPrice + contentsPrice;
 
-                string traderName = PluginConfig.ShowTraderNameInTooltip.Value
-                    ? rigOffer != null ? rigOffer.Name : "Ragman"
-                    : string.Empty;
-
                 List<string> rigLines = new List<string>();
-                rigLines.Add(Colorize(
-                    FormatMainPriceWithOptionalTrader(traderName, rigPrice),
-                    PluginConfig.MainPriceColor.Value));
+                rigLines.Add(baseLine);
 
                 if (platesPrice > 0)
                 {
@@ -471,7 +479,12 @@ namespace AvgSellPrice
 
             if (IsRealContainer(item))
             {
-                bool hasChildren = HasChildren(item);
+                if (PluginConfig.IncludeCasesInValues != null &&
+                    !PluginConfig.IncludeCasesInValues.Value)
+                {
+                    return string.Empty;
+                }
+
                 TraderOffer containerOffer = GetContainerBaseTraderOffer(item);
                 int basePrice = GetContainerBasePriceRobust(item);
 
@@ -485,17 +498,23 @@ namespace AvgSellPrice
                     return string.Empty;
                 }
 
-                int contentsPrice = GetContentsTraderPrice(item);
-                int totalPrice = basePrice + contentsPrice;
-
                 string traderName = PluginConfig.ShowTraderNameInTooltip.Value
                     ? GetContainerBaseTraderName(item, containerOffer)
                     : string.Empty;
+                string baseLine = Colorize(
+                    FormatMainPriceWithOptionalTrader(traderName, basePrice),
+                    PluginConfig.MainPriceColor.Value);
+
+                if (ShouldHideContentsForUnsearchedItem(item))
+                {
+                    return baseLine + Environment.NewLine + GetUnsearchedHoverLine();
+                }
+
+                int contentsPrice = GetContentsTraderPrice(item);
+                int totalPrice = basePrice + contentsPrice;
 
                 List<string> lines = new List<string>();
-                lines.Add(Colorize(
-                    FormatMainPriceWithOptionalTrader(traderName, basePrice),
-                    PluginConfig.MainPriceColor.Value));
+                lines.Add(baseLine);
 
                 if (contentsPrice > 0)
                 {
@@ -775,6 +794,104 @@ namespace AvgSellPrice
             return null;
         }
 
+        private static bool ShouldHideContentsForUnsearchedItem(Item item)
+        {
+            return (ValueTracker.IsInRaid || RaidPlayerState.MainPlayer != null) &&
+                   item != null &&
+                   (IsRealContainer(item) || IsArmoredRig(item)) &&
+                   IsUnsearchedLootContainer(item);
+        }
+
+        private static bool IsUnsearchedLootContainer(Item item)
+        {
+            if (item == null)
+            {
+                return false;
+            }
+
+            SearchableItemItemClass searchableItem = item as SearchableItemItemClass;
+            if (searchableItem != null)
+            {
+                try
+                {
+                    IPlayerSearchController searchController = RaidPlayerState.MainPlayer?.SearchController;
+                    if (searchController != null)
+                    {
+                        return !searchController.IsSearched(searchableItem) ||
+                               searchController.ContainsUnknownItems(searchableItem);
+                    }
+                }
+                catch
+                {
+                }
+
+                return !searchableItem.IsSearched;
+            }
+
+            if (TryReadSearchState(item, out bool searched))
+            {
+                return !searched;
+            }
+
+            object searchInfo = GetMemberValue(
+                item,
+                "SearchInfo",
+                "SearchData",
+                "SearchState",
+                "SearchComponent",
+                "SearchableComponent",
+                "Searchable");
+
+            if (TryReadSearchState(searchInfo, out searched))
+            {
+                return !searched;
+            }
+
+            object updateData = GetMemberValue(item, "upd", "Upd", "UpdateData", "Updatable");
+            object updateSearchInfo = GetMemberValue(
+                updateData,
+                "SearchInfo",
+                "SearchData",
+                "SearchState",
+                "Searchable");
+
+            return TryReadSearchState(updateSearchInfo, out searched) && !searched;
+        }
+
+        private static bool TryReadSearchState(object source, out bool searched)
+        {
+            searched = true;
+
+            if (source == null)
+            {
+                return false;
+            }
+
+            if (TryReadBoolMember(source, "Searched", out searched) ||
+                TryReadBoolMember(source, "IsSearched", out searched) ||
+                TryReadBoolMember(source, "WasSearched", out searched) ||
+                TryReadBoolMember(source, "SearchComplete", out searched) ||
+                TryReadBoolMember(source, "IsSearchComplete", out searched) ||
+                TryReadBoolMember(source, "FullySearched", out searched) ||
+                TryReadBoolMember(source, "IsFullySearched", out searched))
+            {
+                return true;
+            }
+
+            if (TryReadBoolMember(source, "Known", out searched) ||
+                TryReadBoolMember(source, "IsKnown", out searched))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string GetUnsearchedHoverLine()
+        {
+            return Colorize("Unsearched", PluginConfig.MainPriceColor.Value);
+        }
+
         private static string GetNotSellableOnFleaHoverText(Item item)
         {
             List<string> lines = new List<string>();
@@ -783,12 +900,18 @@ namespace AvgSellPrice
             TraderOffer traderOffer = GetConfiguredTraderSellOffer(item);
             if (traderOffer != null && traderOffer.Price > 0)
             {
+                int totalPrice = GetSingleItemTotalSellPrice(item);
+                if (totalPrice <= 0)
+                {
+                    totalPrice = traderOffer.Price;
+                }
+
                 string traderName = PluginConfig.ShowTraderNameInTooltip.Value
                     ? traderOffer.Name
                     : string.Empty;
 
                 lines.Add(Colorize(
-                    FormatMainPriceWithOptionalTrader(traderName, traderOffer.Price),
+                    FormatMainPriceWithOptionalTrader(traderName, totalPrice),
                     PluginConfig.ContentsPriceColor.Value));
             }
 
@@ -950,9 +1073,20 @@ namespace AvgSellPrice
                 return 0;
             }
 
+            int moneyValue = GetMoneyStackValue(item);
+            if (moneyValue > 0)
+            {
+                return moneyValue;
+            }
+
             if (IsArmoredRig(item))
             {
                 int rigPrice = GetArmoredRigBasePrice(item);
+                if (ShouldHideContentsForUnsearchedItem(item))
+                {
+                    return rigPrice;
+                }
+
                 int platesPrice = GetArmorPlateTraderPrice(item);
                 int contentsPrice = GetContentsTraderPrice(item);
                 return rigPrice + platesPrice + contentsPrice;
@@ -961,6 +1095,11 @@ namespace AvgSellPrice
             if (IsRealContainer(item))
             {
                 int basePrice = GetContainerBasePriceRobust(item);
+                if (ShouldHideContentsForUnsearchedItem(item))
+                {
+                    return basePrice;
+                }
+
                 int contentsPrice = GetContentsTraderPrice(item);
                 return basePrice + contentsPrice;
             }
@@ -1090,6 +1229,11 @@ namespace AvgSellPrice
             return item != null && (IsRealContainer(item) || IsArmoredRig(item));
         }
 
+        internal static bool RequiresRaidLootRebuildOnChange(Item item)
+        {
+            return item != null && (MayContainConfiguredValueContents(item) || item is MoneyItemClass);
+        }
+
         internal static List<Item> GetItemTreeSafe(Item item)
         {
             if (item == null)
@@ -1122,21 +1266,25 @@ namespace AvgSellPrice
                 return false;
             }
 
-            if (item is AmmoItemClass &&
-                PluginConfig.IncludeAmmoInValues != null &&
-                !PluginConfig.IncludeAmmoInValues.Value)
-            {
-                return false;
-            }
-
-            if (IsRealContainer(item) &&
-                PluginConfig.IncludeCasesInValues != null &&
-                !PluginConfig.IncludeCasesInValues.Value)
+            if (item is AmmoItemClass && IsChamberSlotItem(item))
             {
                 return false;
             }
 
             return true;
+        }
+
+        private static bool IsChamberSlotItem(Item item)
+        {
+            if (!TryGetItemSlotName(item, out string slotName) || string.IsNullOrEmpty(slotName))
+            {
+                return false;
+            }
+
+            string lower = slotName.ToLowerInvariant();
+            return lower.Contains("chamber") ||
+                   lower.Contains("patron_in_weapon") ||
+                   lower.Contains("cartridge");
         }
 
         private static object GetInventoryEquipmentRoot(object inventory)
@@ -1762,6 +1910,12 @@ namespace AvgSellPrice
                 return 0;
             }
 
+            int moneyValue = GetMoneyStackValue(item);
+            if (moneyValue > 0)
+            {
+                return moneyValue;
+            }
+
             int unitPrice = GetSingleItemPrice(item);
             if (unitPrice <= 0)
             {
@@ -1770,6 +1924,61 @@ namespace AvgSellPrice
 
             int stackCount = item.StackObjectsCount > 1 ? item.StackObjectsCount : 1;
             return unitPrice * stackCount;
+        }
+
+        private static int GetMoneyStackValue(Item item)
+        {
+            if (!(item is MoneyItemClass))
+            {
+                return 0;
+            }
+
+            int stackCount = item.StackObjectsCount > 1 ? item.StackObjectsCount : 1;
+            float rate = GetMoneyRoubleRate(item);
+            if (rate <= 0f)
+            {
+                return 0;
+            }
+
+            return Mathf.RoundToInt(stackCount * rate);
+        }
+
+        private static float GetMoneyRoubleRate(Item item)
+        {
+            string templateId = GetTemplateIdSafe(item);
+            if (string.Equals(templateId, "5449016a4bdc2d6f028b456f", StringComparison.Ordinal))
+            {
+                return 1f;
+            }
+
+            object template = item?.Template;
+            object rawRate = GetMemberValue(template, "rate", "Rate");
+            if (rawRate is float floatRate && floatRate > 0f)
+            {
+                return floatRate;
+            }
+
+            if (rawRate is double doubleRate && doubleRate > 0d)
+            {
+                return (float)doubleRate;
+            }
+
+            if (rawRate is int intRate && intRate > 0)
+            {
+                return intRate;
+            }
+
+            if (string.Equals(templateId, "5696686a4bdc2da3298b456a", StringComparison.Ordinal))
+            {
+                return 130f;
+            }
+
+            if (string.Equals(templateId, "569668774bdc2da2298b4568", StringComparison.Ordinal))
+            {
+                return 145f;
+            }
+
+            return 0f;
         }
 
         private static bool IsMagazine(Item item)
