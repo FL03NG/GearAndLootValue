@@ -68,6 +68,45 @@ namespace AvgSellPrice
             new ContainersPanelShowPatch().Enable();
             Log.LogInfo("ContainersPanelShowPatch enabled");
 
+            new EquipmentTabShowPatch().Enable();
+            Log.LogInfo("EquipmentTabShowPatch enabled");
+
+            new EquipmentTabHidePatch().Enable();
+            Log.LogInfo("EquipmentTabHidePatch enabled");
+
+            new InventoryScreenClosePatch().Enable();
+            Log.LogInfo("InventoryScreenClosePatch enabled");
+
+            new OverallScreenShowPatch().Enable();
+            Log.LogInfo("OverallScreenShowPatch enabled");
+
+            new SkillsScreenShowPatch().Enable();
+            Log.LogInfo("SkillsScreenShowPatch enabled");
+
+            new CharacterHealthPanelShowPatch().Enable();
+            Log.LogInfo("CharacterHealthPanelShowPatch enabled");
+
+            new CharacterHealthPanelAnimatedShowPatch().Enable();
+            Log.LogInfo("CharacterHealthPanelAnimatedShowPatch enabled");
+
+            new TextGameMapPanelShowPatch().Enable();
+            Log.LogInfo("TextGameMapPanelShowPatch enabled");
+
+            new TasksScreenShowPatch().Enable();
+            Log.LogInfo("TasksScreenShowPatch enabled");
+
+            new AchievementsScreenShowPatch().Enable();
+            Log.LogInfo("AchievementsScreenShowPatch enabled");
+
+            new PrestigeScreenShowPatch().Enable();
+            Log.LogInfo("PrestigeScreenShowPatch enabled");
+
+            new InventoryControllerRaiseAddEventPatch().Enable();
+            Log.LogInfo("InventoryControllerRaiseAddEventPatch enabled");
+
+            new InventoryControllerRaiseRemoveEventPatch().Enable();
+            Log.LogInfo("InventoryControllerRaiseRemoveEventPatch enabled");
+
             if (GetComponent<ValueDisplayUI>() == null)
             {
                 gameObject.AddComponent<ValueDisplayUI>();

@@ -14,7 +14,7 @@ namespace AvgSellPrice
     {
         private const string EquipmentLabelObjectName = "AvgSellPriceEquipmentValue";
         private const string RaidLabelObjectName = "AvgSellPriceLootValue";
-        private const float PassiveEquipmentRefreshInterval = 2.5f;
+        private const string EquipmentOverlayCanvasObjectName = "AvgSellPriceEquipmentValueCanvas";
         private const float TraderUiScanInterval = 2.5f;
         private const int MaxRaidLabelCreateAttempts = 6;
 
@@ -35,17 +35,24 @@ namespace AvgSellPrice
         private float _nextRaidLabelCreateTime;
         private float _nextBaselineWarmupTime;
         private float _baselineWarmupEndTime;
-        private float _nextPassiveEquipmentRefreshTime;
+        private float _nextEquipmentLabelRefreshTime;
+        private float _nextEquipmentHideTime;
         private float _nextTraderUiScanTime;
         private bool _raidLabelCreatePending;
         private int _raidLabelCreateAttempts;
         private bool _isTraderSellUiVisible;
+        private bool _equipmentInventoryVisible;
+        private bool _equipmentHidePending;
+        private bool _equipmentLabelRefreshPending;
         private bool _equipmentValueDirty = true;
+        private int _equipmentVisibilityVersion;
+        private int _equipmentHideVersion;
         private int _cachedEquipmentValue = -1;
         private TextMeshProUGUI _equipmentAnchor;
         private TextMeshProUGUI _raidAnchor;
         private GameObject _equipmentBox;
         private GameObject _raidBox;
+        private GameObject _equipmentOverlayCanvas;
         private GameObject _raidOverlayCanvas;
         private TextMeshProUGUI _equipmentLabel;
         private TextMeshProUGUI _raidLabel;
@@ -103,11 +110,21 @@ namespace AvgSellPrice
                 return;
             }
 
-            if (Time.unscaledTime >= _nextPassiveEquipmentRefreshTime)
+            if (_equipmentLabelRefreshPending && Time.unscaledTime >= _nextEquipmentLabelRefreshTime)
             {
-                _nextPassiveEquipmentRefreshTime = Time.unscaledTime + PassiveEquipmentRefreshInterval;
-                RefreshEquipmentLabel();
+                _equipmentLabelRefreshPending = false;
+                RefreshEquipmentLabelTextOnly();
             }
+
+            if (_equipmentHidePending && Time.unscaledTime >= _nextEquipmentHideTime)
+            {
+                _equipmentHidePending = false;
+                if (_equipmentHideVersion == _equipmentVisibilityVersion)
+                {
+                    SetEquipmentInventoryVisible(false);
+                }
+            }
+
         }
 
         internal static void RequestRefresh()
@@ -120,6 +137,36 @@ namespace AvgSellPrice
                 Instance._nextTraderUiScanTime = 0f;
                 Instance._pendingRefresh = true;
             }
+        }
+
+        internal static void RequestEquipmentValueRefresh(float delaySeconds = 0f)
+        {
+            if (Instance == null)
+            {
+                return;
+            }
+
+            Instance._equipmentValueDirty = true;
+            Instance._equipmentLabelRefreshPending = true;
+            Instance._nextEquipmentLabelRefreshTime = Time.unscaledTime + Mathf.Max(0f, delaySeconds);
+        }
+
+        internal static void RequestEquipmentValueHide(float delaySeconds = 0f)
+        {
+            if (Instance == null)
+            {
+                return;
+            }
+
+            if (delaySeconds <= 0f)
+            {
+                Instance.SetEquipmentInventoryVisible(false);
+                return;
+            }
+
+            Instance._equipmentHidePending = true;
+            Instance._equipmentHideVersion = Instance._equipmentVisibilityVersion;
+            Instance._nextEquipmentHideTime = Time.unscaledTime + delaySeconds;
         }
 
         internal static void RequestRaidLabelCreate(float delaySeconds = 0.25f)
@@ -173,6 +220,22 @@ namespace AvgSellPrice
             }
         }
 
+        internal static void SetInventoryVisible(bool visible)
+        {
+            if (Instance == null)
+            {
+                return;
+            }
+
+            if (ValueTracker.IsInRaid)
+            {
+                SetRaidInventoryVisible(visible);
+                return;
+            }
+
+            Instance.SetEquipmentInventoryVisible(visible);
+        }
+
         internal static void SetRaidInventoryVisible(bool visible)
         {
             if (Instance == null)
@@ -198,11 +261,41 @@ namespace AvgSellPrice
             }
         }
 
+        private void SetEquipmentInventoryVisible(bool visible)
+        {
+            if (!visible)
+            {
+                _equipmentInventoryVisible = false;
+                _equipmentVisibilityVersion++;
+                _equipmentHidePending = false;
+                _equipmentLabelRefreshPending = false;
+                if (_equipmentOverlayCanvas != null && _equipmentOverlayCanvas.gameObject != null)
+                {
+                    _equipmentOverlayCanvas.SetActive(false);
+                }
+
+                return;
+            }
+
+            _equipmentInventoryVisible = true;
+            _equipmentVisibilityVersion++;
+            _equipmentHidePending = false;
+            _equipmentValueDirty = true;
+            RefreshEquipmentLabel();
+            RequestEquipmentValueRefresh(0.1f);
+            RequestEquipmentValueRefresh(0.5f);
+        }
+
         private void RefreshNow()
         {
             if (ValueTracker.IsInRaid)
             {
                 HideLabel(_equipmentLabel);
+                if (_equipmentOverlayCanvas != null && _equipmentOverlayCanvas.gameObject != null)
+                {
+                    _equipmentOverlayCanvas.SetActive(false);
+                }
+
                 RefreshRaidLabel();
                 return;
             }
@@ -213,7 +306,14 @@ namespace AvgSellPrice
                 _raidOverlayCanvas.SetActive(false);
             }
 
-            RefreshEquipmentLabel();
+            if (_equipmentInventoryVisible)
+            {
+                RefreshEquipmentLabel();
+            }
+            else if (_equipmentOverlayCanvas != null && _equipmentOverlayCanvas.gameObject != null)
+            {
+                _equipmentOverlayCanvas.SetActive(false);
+            }
         }
 
         private void RefreshEquipmentLabel()
@@ -224,34 +324,41 @@ namespace AvgSellPrice
                 return;
             }
 
-            if (IsTraderSellUiVisible())
+            if (!_equipmentInventoryVisible)
             {
                 HideLabel(_equipmentLabel);
                 return;
             }
 
-            TextMeshProUGUI anchor = GetEquipmentAnchor();
-            if (anchor == null)
-            {
-                HideLabel(_equipmentLabel);
-                return;
-            }
+            _equipmentLabel = EnsureEquipmentOverlayLabel();
 
-            _equipmentLabel = EnsureLabel(
-                ref _equipmentBox,
-                ref _equipmentLabel,
-                anchor,
-                EquipmentLabelObjectName,
-                string.Empty,
-                new Vector2(-69f, 54f),
-                493f,
-                50f,
-                2.36f);
-
-            int value = ItemExtensions.GetPlayerEquipmentValue();
+            int value = GetCachedEquipmentValue();
             _equipmentLabel.text = $"Equipment Value: <b>{ItemExtensions.FormatMoneyUi(value)} ₽</b>";
             _equipmentLabel.color = new Color(0.92f, 0.92f, 0.93f, 1f);
             _equipmentBox.SetActive(true);
+            _equipmentOverlayCanvas.SetActive(true);
+        }
+
+        private void RefreshEquipmentLabelTextOnly()
+        {
+            if (!_equipmentInventoryVisible ||
+                PluginConfig.ShowEquipmentValue != null && !PluginConfig.ShowEquipmentValue.Value)
+            {
+                HideLabel(_equipmentLabel);
+                return;
+            }
+
+            if (_equipmentLabel == null || _equipmentLabel.gameObject == null)
+            {
+                RefreshEquipmentLabel();
+                return;
+            }
+
+            int value = GetCachedEquipmentValue();
+            _equipmentLabel.text = $"Equipment Value: <b>{ItemExtensions.FormatMoneyUi(value)} ₽</b>";
+            _equipmentLabel.color = new Color(0.92f, 0.92f, 0.93f, 1f);
+            _equipmentBox.SetActive(true);
+            _equipmentOverlayCanvas.SetActive(true);
         }
 
         private void RefreshRaidLabel()
@@ -415,31 +522,33 @@ namespace AvgSellPrice
             return label;
         }
 
+        private TextMeshProUGUI EnsureEquipmentOverlayLabel()
+        {
+            if (_equipmentOverlayCanvas == null || _equipmentOverlayCanvas.gameObject == null)
+            {
+                _equipmentOverlayCanvas = CreateOverlayCanvas(EquipmentOverlayCanvasObjectName);
+            }
+
+            if (_equipmentBox == null || _equipmentBox.gameObject == null)
+            {
+                _equipmentBox = CreateValueBox(_equipmentOverlayCanvas.transform, EquipmentLabelObjectName);
+                _equipmentLabel = _equipmentBox.GetComponentInChildren<TextMeshProUGUI>(true);
+            }
+
+            if (_equipmentBox.transform.parent != _equipmentOverlayCanvas.transform)
+            {
+                _equipmentBox.transform.SetParent(_equipmentOverlayCanvas.transform, false);
+            }
+
+            ConfigureOverlayBox(_equipmentBox, _equipmentLabel, new Vector2(68f, 214f), 493f, 50f, 28f);
+            return _equipmentLabel;
+        }
+
         private TextMeshProUGUI EnsureRaidOverlayLabel()
         {
             if (_raidOverlayCanvas == null || _raidOverlayCanvas.gameObject == null)
             {
-                _raidOverlayCanvas = new GameObject(
-                    "AvgSellPriceRaidValueCanvas",
-                    typeof(RectTransform),
-                    typeof(Canvas),
-                    typeof(CanvasScaler),
-                    typeof(GraphicRaycaster));
-
-                DontDestroyOnLoad(_raidOverlayCanvas);
-
-                Canvas canvas = _raidOverlayCanvas.GetComponent<Canvas>();
-                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-                canvas.sortingOrder = 3000;
-
-                CanvasScaler scaler = _raidOverlayCanvas.GetComponent<CanvasScaler>();
-                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                scaler.referenceResolution = new Vector2(1920f, 1080f);
-                scaler.matchWidthOrHeight = 0.5f;
-
-                GraphicRaycaster raycaster = _raidOverlayCanvas.GetComponent<GraphicRaycaster>();
-                raycaster.enabled = false;
-                _raidOverlayCanvas.SetActive(false);
+                _raidOverlayCanvas = CreateOverlayCanvas("AvgSellPriceRaidValueCanvas");
             }
 
             if (_raidBox == null || _raidBox.gameObject == null)
@@ -453,30 +562,68 @@ namespace AvgSellPrice
                 _raidBox.transform.SetParent(_raidOverlayCanvas.transform, false);
             }
 
-            RectTransform boxRect = _raidBox.GetComponent<RectTransform>();
+            ConfigureOverlayBox(_raidBox, _raidLabel, new Vector2(68f, 214f), 493f, 50f, 28f);
+
+            return _raidLabel;
+        }
+
+        private static GameObject CreateOverlayCanvas(string objectName)
+        {
+            GameObject canvasObject = new GameObject(
+                objectName,
+                typeof(RectTransform),
+                typeof(Canvas),
+                typeof(CanvasScaler),
+                typeof(GraphicRaycaster));
+
+            DontDestroyOnLoad(canvasObject);
+
+            Canvas canvas = canvasObject.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 3000;
+
+            CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.matchWidthOrHeight = 0.5f;
+
+            GraphicRaycaster raycaster = canvasObject.GetComponent<GraphicRaycaster>();
+            raycaster.enabled = false;
+            canvasObject.SetActive(false);
+
+            return canvasObject;
+        }
+
+        private static void ConfigureOverlayBox(
+            GameObject box,
+            TextMeshProUGUI label,
+            Vector2 anchoredPosition,
+            float width,
+            float height,
+            float fontSize)
+        {
+            RectTransform boxRect = box.GetComponent<RectTransform>();
             boxRect.anchorMin = new Vector2(0f, 0f);
             boxRect.anchorMax = new Vector2(0f, 0f);
             boxRect.pivot = new Vector2(0f, 0f);
-            boxRect.anchoredPosition = new Vector2(68f, 214f);
-            boxRect.sizeDelta = new Vector2(493f, 50f);
+            boxRect.anchoredPosition = anchoredPosition;
+            boxRect.sizeDelta = new Vector2(width, height);
             boxRect.localScale = Vector3.one;
             boxRect.localRotation = Quaternion.identity;
 
-            RectTransform labelRect = _raidLabel.rectTransform;
+            RectTransform labelRect = label.rectTransform;
             labelRect.anchorMin = Vector2.zero;
             labelRect.anchorMax = Vector2.one;
             labelRect.offsetMin = new Vector2(8f, 1f);
             labelRect.offsetMax = new Vector2(-8f, -1f);
 
-            _raidLabel.fontSize = 28f;
-            _raidLabel.enableAutoSizing = false;
-            _raidLabel.enableWordWrapping = false;
-            _raidLabel.overflowMode = TextOverflowModes.Overflow;
-            _raidLabel.alignment = TextAlignmentOptions.MidlineLeft;
-            _raidLabel.raycastTarget = false;
-            _raidLabel.fontStyle = FontStyles.Normal;
-
-            return _raidLabel;
+            label.fontSize = fontSize;
+            label.enableAutoSizing = false;
+            label.enableWordWrapping = false;
+            label.overflowMode = TextOverflowModes.Overflow;
+            label.alignment = TextAlignmentOptions.MidlineLeft;
+            label.raycastTarget = false;
+            label.fontStyle = FontStyles.Normal;
         }
 
         private static GameObject CreateValueBox(Transform parent, string objectName)
@@ -513,12 +660,20 @@ namespace AvgSellPrice
             _baselineWarmupEndTime = 0f;
             _raidLabelCreatePending = false;
             _raidLabelCreateAttempts = 0;
+            _equipmentInventoryVisible = false;
+            _equipmentHidePending = false;
+            _equipmentLabelRefreshPending = false;
             _pendingItemReconciles.Clear();
             _nextTraderUiScanTime = 0f;
             _isTraderSellUiVisible = false;
             _equipmentValueDirty = true;
+            _equipmentVisibilityVersion++;
             _cachedEquipmentValue = -1;
             _pendingRefresh = true;
+            if (_equipmentOverlayCanvas != null && _equipmentOverlayCanvas.gameObject != null)
+            {
+                _equipmentOverlayCanvas.SetActive(false);
+            }
         }
 
         private TextMeshProUGUI GetEquipmentAnchor()
@@ -612,8 +767,6 @@ namespace AvgSellPrice
 
             return _cachedEquipmentValue;
         }
-
-
 
         private static TextMeshProUGUI FindEquipmentAnchor()
         {

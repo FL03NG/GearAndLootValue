@@ -1104,6 +1104,16 @@ namespace AvgSellPrice
                 return basePrice + contentsPrice;
             }
 
+            if (item is Weapon)
+            {
+                return GetWeaponTotalSellValue(item);
+            }
+
+            if (ShouldUseModAttachmentBreakdown(item))
+            {
+                return GetModAttachmentRootTotalSellValue(item);
+            }
+
             return GetSingleItemPrice(item);
         }
         public static int GetPlayerEquipmentValue()
@@ -1206,7 +1216,7 @@ namespace AvgSellPrice
                 return 0;
             }
 
-            return GetDisplayMainPrice(item);
+            return GetTotalSellValue(item);
         }
 
         internal static int GetConfiguredRaidLootRootValue(Item item)
@@ -2053,7 +2063,53 @@ namespace AvgSellPrice
 
             foreach (Item child in attachmentRoots)
             {
-                total += GetSingleItemTotalSellPrice(child);
+                total += GetAttachmentRootTotalSellPrice(child);
+            }
+
+            return total;
+        }
+
+        private static int GetAttachmentRootTotalSellPrice(Item item)
+        {
+            int total = GetSingleItemTotalSellPrice(item);
+
+            if (!UseFleaPriceSource || item == null)
+            {
+                return total;
+            }
+
+            if (item is Weapon)
+            {
+                return total + GetWeaponAttachmentTraderPrice(item);
+            }
+
+            if (ShouldUseModAttachmentBreakdown(item))
+            {
+                return total + GetModAttachmentPrice(item);
+            }
+
+            return total;
+        }
+
+        private static int GetWeaponTotalSellValue(Item item)
+        {
+            int total = GetSingleItemTotalSellPrice(item);
+
+            if (UseFleaPriceSource)
+            {
+                return total + GetWeaponAttachmentTraderPrice(item);
+            }
+
+            return total;
+        }
+
+        private static int GetModAttachmentRootTotalSellValue(Item item)
+        {
+            int total = GetSingleItemTotalSellPrice(item);
+
+            if (UseFleaPriceSource && ShouldUseModAttachmentBreakdown(item))
+            {
+                return total + GetModAttachmentPrice(item);
             }
 
             return total;
@@ -2094,7 +2150,7 @@ namespace AvgSellPrice
 
             foreach (Item child in attachmentRoots)
             {
-                total += GetSingleItemTotalSellPrice(child);
+                total += GetAttachmentRootTotalSellPrice(child);
             }
 
             return total;
@@ -2693,12 +2749,17 @@ namespace AvgSellPrice
 
             if (item is Weapon)
             {
-                return GetSingleItemTotalSellPrice(item);
+                return GetWeaponTotalSellValue(item);
             }
 
             if (IsRealContainer(item) || IsArmoredRig(item))
             {
                 return GetDisplayMainPrice(item);
+            }
+
+            if (ShouldUseModAttachmentBreakdown(item))
+            {
+                return GetModAttachmentRootTotalSellValue(item);
             }
 
             return GetSingleItemTotalSellPrice(item);
@@ -2713,7 +2774,7 @@ namespace AvgSellPrice
 
             if (item is Weapon)
             {
-                return GetSingleItemPrice(item);
+                return GetWeaponTotalSellValue(item);
             }
 
             if (IsArmoredRig(item))
@@ -2729,6 +2790,11 @@ namespace AvgSellPrice
                 int basePrice = GetContainerBasePriceRobust(item);
                 int contentsPrice = GetContentsTraderPrice(item);
                 return basePrice + contentsPrice;
+            }
+
+            if (ShouldUseModAttachmentBreakdown(item))
+            {
+                return GetModAttachmentRootTotalSellValue(item);
             }
 
             return GetSingleItemPrice(item);
