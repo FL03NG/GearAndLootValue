@@ -18,8 +18,13 @@ namespace AvgSellPrice
 
         public static bool IsLoaded => _loaded;
 
-        public static void Load()
+        public static void Load(bool force = false)
         {
+            if (!force && _loaded)
+            {
+                return;
+            }
+
             try
             {
                 string json = RequestHandler.GetJson("/AvgSellPrice/fleaPrices");

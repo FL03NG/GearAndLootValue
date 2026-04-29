@@ -77,6 +77,12 @@ namespace AvgSellPrice
             new InventoryScreenClosePatch().Enable();
             Log.LogInfo("InventoryScreenClosePatch enabled");
 
+            new InventoryScreenTabSwitchPatch().Enable();
+            Log.LogInfo("InventoryScreenTabSwitchPatch enabled");
+
+            new InventoryTabPointerClickPatch().Enable();
+            Log.LogInfo("InventoryTabPointerClickPatch enabled");
+
             new OverallScreenShowPatch().Enable();
             Log.LogInfo("OverallScreenShowPatch enabled");
 

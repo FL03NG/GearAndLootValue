@@ -40,6 +40,7 @@ namespace AvgSellPrice
         public static ConfigEntry<Color> AmmoPriceColor;
         public static ConfigEntry<Color> PlatesPriceColor;
         public static ConfigEntry<Color> TotalPriceColor;
+        public static ConfigEntry<Color> NotSellableOnFleaColor;
 
         public static ConfigEntry<Color> RaidValueLowColor;
         public static ConfigEntry<Color> RaidValueMidColor;
@@ -166,6 +167,14 @@ namespace AvgSellPrice
                 DesiredTotalColor,
                 "Color for the total price line."
             );
+
+            NotSellableOnFleaColor = config.Bind(
+                "Colors",
+                "NotSellableOnFleaColor",
+                Color.red,
+                "Color for the 'Not sellable on flea' warning line."
+            );
+
             RaidValueLowColor = config.Bind(
     "Raid Value",
     "LowColor",

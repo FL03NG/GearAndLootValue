@@ -240,7 +240,9 @@ namespace AvgSellPrice
             if (item is AmmoItemClass)
             {
                 TraderOffer ammoOffer = GetConfiguredTraderOffer(item);
-                int ammoPrice = GetSingleItemTotalSellPrice(item);
+                int ammoPrice = IsTraderStockItem(item)
+                    ? GetSingleItemPrice(item)
+                    : GetSingleItemTotalSellPrice(item);
 
                 if (ammoOffer == null || ammoPrice <= 0)
                 {
@@ -303,7 +305,12 @@ namespace AvgSellPrice
                 TraderOffer weaponOffer = GetConfiguredTraderOffer(item);
                 int totalPrice = weaponOffer != null ? weaponOffer.Price : 0;
                 int attachmentsPrice = GetWeaponAttachmentTraderPrice(item);
-                int basePrice = UseFleaPriceSource
+                bool fallbackToTraderBase = UseFleaPriceSource && IsKnownNotSellableOnFlea(item);
+                int basePrice = fallbackToTraderBase
+                    ? totalPrice > 0
+                        ? Math.Max(0, totalPrice - attachmentsPrice)
+                        : GetSingleItemPrice(item)
+                    : UseFleaPriceSource
                     ? GetSingleItemPrice(item)
                     : totalPrice > 0
                         ? Math.Max(0, totalPrice - attachmentsPrice)
@@ -329,7 +336,9 @@ namespace AvgSellPrice
 
                 List<string> weaponLines = new List<string>();
                 weaponLines.Add(Colorize(
-                    FormatMainPriceWithOptionalTrader(traderName, displayPrice),
+                    fallbackToTraderBase
+                        ? FormatBasePriceWithOptionalTrader(traderName, displayPrice)
+                        : FormatMainPriceWithOptionalTrader(traderName, displayPrice),
                     PluginConfig.MainPriceColor.Value));
 
                 if (showWeaponAttachments && attachmentsPrice > 0)
@@ -575,6 +584,21 @@ namespace AvgSellPrice
             return false;
         }
 
+        private static bool IsTraderStockItem(Item item)
+        {
+            object owner = item?.Owner;
+            if (owner == null)
+            {
+                return false;
+            }
+
+            string ownerType = item.Owner.OwnerType.ToString() ?? string.Empty;
+            string ownerClass = owner.GetType().FullName ?? owner.GetType().Name ?? string.Empty;
+
+            return ownerType.IndexOf("Trader", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   ownerClass.IndexOf("Trader", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         private static string FormatMainPriceWithOptionalTrader(string traderName, int rawPrice, bool applyMinimum = true)
         {
             int price = applyMinimum ? ApplyMinimumPrice(rawPrice) : rawPrice;
@@ -594,7 +618,7 @@ namespace AvgSellPrice
 
                 if (!PluginConfig.ShowTraderNameInTooltip.Value)
                 {
-                    return "Base " + formattedPrice;
+                    return (UseFleaPriceSource ? "Flea " : "Base ") + formattedPrice;
                 }
 
                 return formattedPrice;
@@ -603,6 +627,29 @@ namespace AvgSellPrice
             if (showAround)
             {
                 return traderName + " around " + formattedPrice;
+            }
+
+            return traderName + " " + formattedPrice;
+        }
+
+        private static string FormatBasePriceWithOptionalTrader(string traderName, int rawPrice, bool applyMinimum = true)
+        {
+            int price = applyMinimum ? ApplyMinimumPrice(rawPrice) : rawPrice;
+
+            string formattedPrice = PluginConfig.PrecisePrice.Value
+                ? FormatPrecise(price)
+                : FormatPrice(price);
+
+            bool showAround = PluginConfig.ShowAroundPrefix.Value && !PluginConfig.PrecisePrice.Value;
+
+            if (!PluginConfig.ShowTraderNameInTooltip.Value || string.IsNullOrEmpty(traderName))
+            {
+                return (showAround ? "Around Base " : "Base ") + formattedPrice;
+            }
+
+            if (showAround)
+            {
+                return "Around " + traderName + " " + formattedPrice;
             }
 
             return traderName + " " + formattedPrice;
@@ -895,24 +942,190 @@ namespace AvgSellPrice
         private static string GetNotSellableOnFleaHoverText(Item item)
         {
             List<string> lines = new List<string>();
-            lines.Add(Colorize("Not sellable on flea", PluginConfig.MainPriceColor.Value));
+            lines.Add(Colorize("Not sellable on flea", PluginConfig.NotSellableOnFleaColor.Value));
 
             TraderOffer traderOffer = GetConfiguredTraderSellOffer(item);
-            if (traderOffer != null && traderOffer.Price > 0)
+            int sellPrice = traderOffer != null ? traderOffer.Price : 0;
+            string traderName = PluginConfig.ShowTraderNameInTooltip.Value && traderOffer != null
+                ? traderOffer.Name
+                : string.Empty;
+
+            if (item is AmmoItemClass)
             {
-                int totalPrice = GetSingleItemTotalSellPrice(item);
-                if (totalPrice <= 0)
+                int ammoPrice = IsTraderStockItem(item)
+                    ? GetSingleItemPrice(item)
+                    : GetSingleItemTotalSellPrice(item);
+
+                if (ammoPrice > 0)
                 {
-                    totalPrice = traderOffer.Price;
+                    lines.Add(Colorize(
+                        FormatMainPriceWithOptionalTrader(traderName, ammoPrice, applyMinimum: false),
+                        PluginConfig.MainPriceColor.Value));
                 }
 
-                string traderName = PluginConfig.ShowTraderNameInTooltip.Value
-                    ? traderOffer.Name
+                return string.Join(Environment.NewLine, lines);
+            }
+
+            if (item is Weapon)
+            {
+                int attachmentsPrice = GetWeaponAttachmentTraderPrice(item);
+                TraderOffer weaponBaseOffer = GetWeaponBaseTraderSellOffer(item);
+                int basePrice = weaponBaseOffer != null && weaponBaseOffer.Price > 0
+                    ? weaponBaseOffer.Price
+                    : sellPrice > 0
+                        ? Math.Max(0, sellPrice - attachmentsPrice)
+                        : GetTemplateFallbackPrice(item);
+                int totalPrice = basePrice + attachmentsPrice;
+                string weaponTraderName = PluginConfig.ShowTraderNameInTooltip.Value && weaponBaseOffer != null
+                    ? weaponBaseOffer.Name
+                    : traderName;
+
+                if (basePrice > 0 || totalPrice > 0)
+                {
+                    lines.Add(Colorize(
+                        FormatBasePriceWithOptionalTrader(weaponTraderName, basePrice > 0 ? basePrice : totalPrice),
+                        PluginConfig.MainPriceColor.Value));
+                }
+
+                if (PluginConfig.ShowWeaponAttachmentsPrice.Value && attachmentsPrice > 0)
+                {
+                    lines.Add(Colorize(
+                        "Attachments " + FormatPriceExternal(attachmentsPrice),
+                        PluginConfig.ContentsPriceColor.Value));
+
+                    lines.Add(Colorize(
+                        "Total " + FormatPriceExternal(totalPrice),
+                        PluginConfig.TotalPriceColor.Value));
+                }
+
+                return string.Join(Environment.NewLine, lines);
+            }
+
+            if (ShouldUseModAttachmentBreakdown(item))
+            {
+                int attachmentsPrice = GetModAttachmentPrice(item);
+                int basePrice = sellPrice > 0
+                    ? Math.Max(0, sellPrice - attachmentsPrice)
+                    : GetSingleItemPrice(item);
+                int totalPrice = basePrice + attachmentsPrice;
+
+                if (basePrice > 0 || totalPrice > 0)
+                {
+                    lines.Add(Colorize(
+                        FormatMainPriceWithOptionalTrader(traderName, basePrice > 0 ? basePrice : totalPrice),
+                        PluginConfig.MainPriceColor.Value));
+                }
+
+                if (attachmentsPrice > 0)
+                {
+                    lines.Add(Colorize(
+                        "Attachments " + FormatPriceExternal(attachmentsPrice),
+                        PluginConfig.ContentsPriceColor.Value));
+
+                    lines.Add(Colorize(
+                        "Total " + FormatPriceExternal(totalPrice),
+                        PluginConfig.TotalPriceColor.Value));
+                }
+
+                return string.Join(Environment.NewLine, lines);
+            }
+
+            if (IsArmoredRig(item))
+            {
+                TraderOffer rigOffer = GetArmoredRigTraderOffer(item);
+                int basePrice = rigOffer != null && rigOffer.Price > 0
+                    ? rigOffer.Price
+                    : GetArmoredRigBasePrice(item);
+                string rigTraderName = PluginConfig.ShowTraderNameInTooltip.Value && rigOffer != null
+                    ? rigOffer.Name
+                    : traderName;
+
+                if (basePrice > 0)
+                {
+                    lines.Add(Colorize(
+                        FormatMainPriceWithOptionalTrader(rigTraderName, basePrice),
+                        PluginConfig.MainPriceColor.Value));
+                }
+
+                if (ShouldHideContentsForUnsearchedItem(item))
+                {
+                    lines.Add(GetUnsearchedHoverLine());
+                    return string.Join(Environment.NewLine, lines);
+                }
+
+                int platesPrice = GetArmorPlateTraderPrice(item);
+                int contentsPrice = GetContentsTraderPrice(item);
+
+                if (platesPrice > 0)
+                {
+                    lines.Add(Colorize(
+                        "Plates " + FormatPriceExternal(platesPrice),
+                        PluginConfig.PlatesPriceColor.Value));
+                }
+
+                if (contentsPrice > 0)
+                {
+                    lines.Add(Colorize(
+                        "Contents " + FormatContentsPriceVisual(contentsPrice),
+                        PluginConfig.ContentsPriceColor.Value));
+                }
+
+                if (platesPrice > 0 || contentsPrice > 0)
+                {
+                    lines.Add(Colorize(
+                        "Total " + FormatPriceExternal(basePrice + platesPrice + contentsPrice),
+                        PluginConfig.TotalPriceColor.Value));
+                }
+
+                return string.Join(Environment.NewLine, lines);
+            }
+
+            if (IsRealContainer(item))
+            {
+                TraderOffer containerOffer = GetContainerBaseTraderOffer(item);
+                int basePrice = GetContainerBasePriceRobust(item);
+                if (containerOffer != null && containerOffer.Price > 0)
+                {
+                    basePrice = containerOffer.Price;
+                }
+
+                string containerTraderName = PluginConfig.ShowTraderNameInTooltip.Value
+                    ? GetContainerBaseTraderName(item, containerOffer)
                     : string.Empty;
 
+                if (basePrice > 0)
+                {
+                    lines.Add(Colorize(
+                        FormatMainPriceWithOptionalTrader(containerTraderName, basePrice),
+                        PluginConfig.MainPriceColor.Value));
+                }
+
+                if (ShouldHideContentsForUnsearchedItem(item))
+                {
+                    lines.Add(GetUnsearchedHoverLine());
+                    return string.Join(Environment.NewLine, lines);
+                }
+
+                int contentsPrice = GetContentsTraderPrice(item);
+                if (contentsPrice > 0)
+                {
+                    lines.Add(Colorize(
+                        "Contents " + FormatContentsPriceVisual(contentsPrice),
+                        PluginConfig.ContentsPriceColor.Value));
+
+                    lines.Add(Colorize(
+                        "Total " + FormatPriceExternal(basePrice + contentsPrice),
+                        PluginConfig.TotalPriceColor.Value));
+                }
+
+                return string.Join(Environment.NewLine, lines);
+            }
+
+            if (sellPrice > 0)
+            {
                 lines.Add(Colorize(
-                    FormatMainPriceWithOptionalTrader(traderName, totalPrice),
-                    PluginConfig.ContentsPriceColor.Value));
+                    FormatMainPriceWithOptionalTrader(traderName, sellPrice),
+                    PluginConfig.MainPriceColor.Value));
             }
 
             return string.Join(Environment.NewLine, lines);
@@ -1137,7 +1350,7 @@ namespace AvgSellPrice
                     continue;
                 }
 
-                total += GetConfiguredValueItemPrice(item);
+                total += GetEquipmentValueItemPrice(item);
             }
 
             return total;
@@ -1219,6 +1432,102 @@ namespace AvgSellPrice
             return GetTotalSellValue(item);
         }
 
+        private static int GetEquipmentValueItemPrice(Item item)
+        {
+            if (item == null ||
+                ShouldSkipEquipmentValueItem(item) ||
+                !ShouldIncludeItemInConfiguredValues(item))
+            {
+                return 0;
+            }
+
+            int moneyValue = GetMoneyStackValue(item);
+            if (moneyValue > 0)
+            {
+                return moneyValue;
+            }
+
+            if (IsArmoredRig(item))
+            {
+                int rigPrice = GetArmoredRigBasePrice(item);
+                int platesPrice = GetArmorPlateTraderPrice(item);
+                int contentsPrice = GetEquipmentContentsTraderPrice(item);
+                return rigPrice + platesPrice + contentsPrice;
+            }
+
+            if (IsRealContainer(item))
+            {
+                int basePrice = GetContainerBasePriceRobust(item);
+                int contentsPrice = GetEquipmentContentsTraderPrice(item);
+                return basePrice + contentsPrice;
+            }
+
+            if (item is Weapon)
+            {
+                return GetWeaponTotalSellValue(item);
+            }
+
+            if (ShouldUseModAttachmentBreakdown(item))
+            {
+                return GetModAttachmentRootTotalSellValue(item);
+            }
+
+            return GetSingleItemPrice(item);
+        }
+
+        private static int GetEquipmentContentsTraderPrice(Item item)
+        {
+            if (item == null)
+            {
+                return 0;
+            }
+
+            int total = 0;
+            List<Item> contentRoots = GetRootItems(
+                item.GetAllItems()
+                    .Where(child => ShouldCountAsEquipmentValueContents(item, child))
+                    .ToList());
+
+            foreach (Item child in contentRoots)
+            {
+                total += GetEquipmentContentsItemSellPrice(child);
+            }
+
+            return total;
+        }
+
+        private static int GetEquipmentContentsItemSellPrice(Item item)
+        {
+            if (item == null || IsKeyItem(item) || IsEquipmentValueCase(item))
+            {
+                return 0;
+            }
+
+            if (item is Weapon)
+            {
+                return GetWeaponTotalSellValue(item);
+            }
+
+            if (IsRealContainer(item) || IsArmoredRig(item))
+            {
+                return GetEquipmentValueItemPrice(item);
+            }
+
+            if (ShouldUseModAttachmentBreakdown(item))
+            {
+                return GetModAttachmentRootTotalSellValue(item);
+            }
+
+            return GetSingleItemTotalSellPrice(item);
+        }
+
+        private static bool ShouldCountAsEquipmentValueContents(Item parent, Item child)
+        {
+            return ShouldCountAsContents(parent, child) &&
+                   !IsKeyItem(child) &&
+                   !IsEquipmentValueCase(child);
+        }
+
         internal static int GetConfiguredRaidLootRootValue(Item item)
         {
             if (item == null)
@@ -1266,7 +1575,68 @@ namespace AvgSellPrice
         private static bool ShouldSkipEquipmentValueItem(Item item)
         {
             string slotName = GetCurrentSlotName(item);
-            return string.Equals(slotName, "Scabbard", StringComparison.OrdinalIgnoreCase);
+            return string.Equals(slotName, "Scabbard", StringComparison.OrdinalIgnoreCase) ||
+                   IsKeyItem(item) ||
+                   IsEquipmentValueCase(item);
+        }
+
+        private static bool IsKeyItem(Item item)
+        {
+            if (item == null)
+            {
+                return false;
+            }
+
+            string typeName = item.GetType().Name;
+            if (!string.IsNullOrEmpty(typeName) &&
+                typeName.IndexOf("Key", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+
+            string templateName = item.Template != null ? item.Template.Name : null;
+            return !string.IsNullOrEmpty(templateName) &&
+                   templateName.IndexOf("Key", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsEquipmentValueCase(Item item)
+        {
+            if (item == null || !IsRealContainer(item))
+            {
+                return false;
+            }
+
+            if (item is BackpackItemClass || item is VestItemClass)
+            {
+                return false;
+            }
+
+            string slotName = GetCurrentSlotName(item);
+            if (string.Equals(slotName, "SecuredContainer", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            string typeName = item.GetType().Name;
+            string templateName = item.Template != null ? item.Template.Name : null;
+            string shortName = item.ShortName;
+
+            return ContainsCaseName(typeName) ||
+                   ContainsCaseName(templateName) ||
+                   ContainsCaseName(shortName);
+        }
+
+        private static bool ContainsCaseName(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return false;
+            }
+
+            return value.IndexOf("Case", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   value.IndexOf("Container", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   value.IndexOf("Keytool", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   value.IndexOf("Key_tool", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool ShouldIncludeItemInConfiguredValues(Item item)
@@ -2154,6 +2524,36 @@ namespace AvgSellPrice
             }
 
             return total;
+        }
+
+        private static TraderOffer GetWeaponBaseTraderSellOffer(Item item)
+        {
+            if (!(item is Weapon))
+            {
+                return null;
+            }
+
+            try
+            {
+                Item queryItem = BuildTraderQueryItem(
+                    item,
+                    preserveOriginalId: false,
+                    stripContainerContents: true);
+
+                if (queryItem == null)
+                {
+                    return null;
+                }
+
+                return PluginConfig.ContainerPriceMode.Value == PriceMode.Best
+                    ? GetBestTraderOfferFromQueryItem(queryItem, item)
+                    : GetAverageTraderOfferFromQueryItem(queryItem, item);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"[AvgSellPrice] Weapon base trader query failed for {item.ShortName}: {ex.Message}");
+                return null;
+            }
         }
 
         private static bool ShouldCountAsWeaponAttachment(Item weapon, Item child)

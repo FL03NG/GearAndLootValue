@@ -31,6 +31,15 @@ namespace AvgSellPrice
             ValueDisplayUI.RequestEquipmentValueRefresh(0f);
             ValueDisplayUI.RequestEquipmentValueRefresh(0.1f);
         }
+
+        public static void ProbeSoon()
+        {
+        }
+
+        public static void ShowSoon()
+        {
+            ValueDisplayUI.SetInventoryVisible(true);
+        }
     }
 
     internal class PlayerItemAddedPatch : ModulePatch
@@ -179,6 +188,37 @@ namespace AvgSellPrice
 
         [PatchPostfix]
         private static void PatchPostfix()
+        {
+            EquipmentValueVisibility.Hide();
+        }
+    }
+
+    internal class InventoryScreenTabSwitchPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod()
+        {
+            return AccessTools.Method(
+                typeof(InventoryScreen),
+                "method_4",
+                new[] { AccessTools.TypeByName("EInventoryTab"), typeof(bool) });
+        }
+
+        [PatchPrefix]
+        private static void PatchPrefix()
+        {
+            EquipmentValueVisibility.Hide();
+        }
+    }
+
+    internal class InventoryTabPointerClickPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod()
+        {
+            return AccessTools.Method(AccessTools.TypeByName("Tab"), "OnPointerClick");
+        }
+
+        [PatchPrefix]
+        private static void PatchPrefix()
         {
             EquipmentValueVisibility.Hide();
         }
