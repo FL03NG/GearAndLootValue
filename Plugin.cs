@@ -32,6 +32,9 @@ namespace AvgSellPrice
             FleaPriceCache.Load();
             Log.LogInfo("FleaPriceCache.Load called");
 
+            WeaponDefaultPresetCache.Load();
+            Log.LogInfo("WeaponDefaultPresetCache.Load called");
+
             new TraderPatch().Enable();
             Log.LogInfo("TraderPatch enabled");
 

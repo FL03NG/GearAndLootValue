@@ -2535,10 +2535,7 @@ namespace AvgSellPrice
 
             try
             {
-                Item queryItem = BuildTraderQueryItem(
-                    item,
-                    preserveOriginalId: false,
-                    stripContainerContents: true);
+                Item queryItem = BuildWeaponBaseTraderQueryItem(item);
 
                 if (queryItem == null)
                 {
@@ -2563,7 +2560,136 @@ namespace AvgSellPrice
                 return false;
             }
 
-            return !(child is AmmoItemClass);
+            return !(child is AmmoItemClass) &&
+                   !IsDefaultWeaponPart(weapon, child);
+        }
+
+        private static bool IsDefaultWeaponPart(Item weapon, Item part)
+        {
+            string weaponTemplateId = GetTemplateIdSafe(weapon);
+            string partTemplateId = GetTemplateIdSafe(part);
+
+            return WeaponDefaultPresetCache.IsDefaultPart(weaponTemplateId, partTemplateId);
+        }
+
+        private static Item BuildWeaponBaseTraderQueryItem(Item item)
+        {
+            if (!(item is Weapon))
+            {
+                return BuildTraderQueryItem(item, preserveOriginalId: false, stripContainerContents: true);
+            }
+
+            Item clone = item.CloneItem();
+            clone.StackObjectsCount = 1;
+            clone.UnlimitedCount = false;
+
+            ClearCompoundGrids(clone as CompoundItem);
+            StripNonDefaultWeaponParts(clone as CompoundItem, GetTemplateIdSafe(item));
+
+            return clone;
+        }
+
+        private static void StripNonDefaultWeaponParts(CompoundItem compound, string weaponTemplateId)
+        {
+            if (compound == null || string.IsNullOrEmpty(weaponTemplateId) || compound.Slots == null)
+            {
+                return;
+            }
+
+            foreach (Slot slot in compound.Slots)
+            {
+                try
+                {
+                    Item contained = slot?.ContainedItem;
+                    if (contained == null)
+                    {
+                        continue;
+                    }
+
+                    if (contained is AmmoItemClass ||
+                        !WeaponDefaultPresetCache.IsDefaultPart(weaponTemplateId, GetTemplateIdSafe(contained)))
+                    {
+                        ClearSlotContainedItem(slot);
+                        continue;
+                    }
+
+                    ClearCompoundGrids(contained as CompoundItem);
+                    StripNonDefaultWeaponParts(contained as CompoundItem, weaponTemplateId);
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private static void ClearCompoundGrids(CompoundItem compound)
+        {
+            if (compound == null || compound.Grids == null)
+            {
+                return;
+            }
+
+            foreach (var grid in compound.Grids)
+            {
+                Type t = grid.GetType();
+                while (t != null)
+                {
+                    bool found = false;
+                    foreach (var field in t.GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public))
+                    {
+                        if (!field.FieldType.IsGenericType)
+                        {
+                            continue;
+                        }
+
+                        var val = field.GetValue(grid);
+                        var asDict = val as IDictionary;
+                        if (asDict != null)
+                        {
+                            asDict.Clear();
+                            found = true;
+                            break;
+                        }
+
+                        var asList = val as IList;
+                        if (asList != null)
+                        {
+                            asList.Clear();
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (found)
+                    {
+                        break;
+                    }
+
+                    t = t.BaseType;
+                }
+            }
+        }
+
+        private static void ClearSlotContainedItem(Slot slot)
+        {
+            if (slot == null)
+            {
+                return;
+            }
+
+            var slotType = slot.GetType();
+            while (slotType != null)
+            {
+                var field = slotType.GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public)
+                    .FirstOrDefault(f => typeof(Item).IsAssignableFrom(f.FieldType));
+                if (field != null)
+                {
+                    field.SetValue(slot, null);
+                    break;
+                }
+
+                slotType = slotType.BaseType;
+            }
         }
 
         private static int GetArmoredRigBasePrice(Item item)
