@@ -14,6 +14,7 @@ namespace AvgSellPrice
             new Dictionary<string, LootValueEntry>(StringComparer.Ordinal);
 
         public static int CurrentRaidLootValue { get; private set; }
+        public static int LastRaidLootValue { get; private set; }
 
         public static bool IsInRaid { get; private set; }
         public static bool BaselineWarmupActive { get; private set; }
@@ -23,6 +24,7 @@ namespace AvgSellPrice
             IsInRaid = true;
             BaselineWarmupActive = true;
             CurrentRaidLootValue = 0;
+            LastRaidLootValue = 0;
             CountedLootValuesByItemId.Clear();
 
             CaptureBaselineInventory();
@@ -30,6 +32,7 @@ namespace AvgSellPrice
 
         public static void EndRaid()
         {
+            LastRaidLootValue = CurrentRaidLootValue;
             IsInRaid = false;
             BaselineWarmupActive = false;
             CurrentRaidLootValue = 0;

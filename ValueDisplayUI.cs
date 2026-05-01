@@ -14,6 +14,7 @@ namespace AvgSellPrice
     {
         private const string EquipmentLabelObjectName = "AvgSellPriceEquipmentValue";
         private const string RaidLabelObjectName = "AvgSellPriceLootValue";
+        private const string RaidEndLabelObjectName = "AvgSellPriceRaidEndLootValue";
         private const string EquipmentOverlayCanvasObjectName = "AvgSellPriceEquipmentValueCanvas";
         private const float TraderUiScanInterval = 2.5f;
         private const int MaxRaidLabelCreateAttempts = 6;
@@ -54,10 +55,13 @@ namespace AvgSellPrice
         private TextMeshProUGUI _raidAnchor;
         private GameObject _equipmentBox;
         private GameObject _raidBox;
+        private GameObject _raidEndBox;
         private GameObject _equipmentOverlayCanvas;
         private GameObject _raidOverlayCanvas;
+        private GameObject _raidEndOverlayCanvas;
         private TextMeshProUGUI _equipmentLabel;
         private TextMeshProUGUI _raidLabel;
+        private TextMeshProUGUI _raidEndLabel;
         private readonly List<PendingItemReconcile> _pendingItemReconciles = new List<PendingItemReconcile>();
 
         private void Awake()
@@ -245,6 +249,14 @@ namespace AvgSellPrice
             if (Instance != null)
             {
                 Instance.RefreshRaidLabelTextOnly();
+            }
+        }
+
+        internal static void ShowRaidEndLootValue()
+        {
+            if (Instance != null)
+            {
+                Instance.RefreshRaidEndLootValue();
             }
         }
 
@@ -447,6 +459,31 @@ namespace AvgSellPrice
             Transform root = _raidLabel.transform.parent;
         }
 
+        private void RefreshRaidEndLootValue()
+        {
+            if (PluginConfig.ShowRaidLootValue != null && !PluginConfig.ShowRaidLootValue.Value)
+            {
+                HideLabel(_raidEndLabel);
+                return;
+            }
+
+            int value = ValueTracker.LastRaidLootValue;
+            _raidEndLabel = EnsureRaidEndOverlayLabel();
+            if (_raidEndLabel == null)
+            {
+                return;
+            }
+
+            _raidEndLabel.text = $"Raid Loot: <b>{ItemExtensions.FormatMoneyUi(value)} ₽</b>";
+            _raidEndLabel.color = GetRaidValueColor(value);
+            _raidEndBox.SetActive(true);
+
+            if (_raidEndOverlayCanvas != null && _raidEndOverlayCanvas.gameObject != null)
+            {
+                _raidEndOverlayCanvas.SetActive(true);
+            }
+        }
+
         private void ProcessPendingItemReconciles()
         {
             if (_pendingItemReconciles.Count == 0)
@@ -635,6 +672,30 @@ namespace AvgSellPrice
             return _raidLabel;
         }
 
+        private TextMeshProUGUI EnsureRaidEndOverlayLabel()
+        {
+            if (_raidEndOverlayCanvas == null || _raidEndOverlayCanvas.gameObject == null)
+            {
+                _raidEndOverlayCanvas = CreateOverlayCanvas("AvgSellPriceRaidEndValueCanvas");
+            }
+
+            if (_raidEndBox == null || _raidEndBox.gameObject == null)
+            {
+                _raidEndBox = CreateValueBox(_raidEndOverlayCanvas.transform, RaidEndLabelObjectName);
+                _raidEndLabel = _raidEndBox.GetComponentInChildren<TextMeshProUGUI>(true);
+            }
+
+            if (_raidEndBox.transform.parent != _raidEndOverlayCanvas.transform)
+            {
+                _raidEndBox.transform.SetParent(_raidEndOverlayCanvas.transform, false);
+            }
+
+            ConfigureOverlayBox(_raidEndBox, _raidEndLabel, new Vector2(705f, 295f), 510f, 58f, 30f);
+            _raidEndLabel.alignment = TextAlignmentOptions.Midline;
+
+            return _raidEndLabel;
+        }
+
         private static GameObject CreateOverlayCanvas(string objectName)
         {
             GameObject canvasObject = new GameObject(
@@ -747,6 +808,11 @@ namespace AvgSellPrice
             if (_equipmentOverlayCanvas != null && _equipmentOverlayCanvas.gameObject != null)
             {
                 _equipmentOverlayCanvas.SetActive(false);
+            }
+
+            if (_raidEndOverlayCanvas != null && _raidEndOverlayCanvas.gameObject != null)
+            {
+                _raidEndOverlayCanvas.SetActive(false);
             }
         }
 

@@ -305,20 +305,21 @@ namespace AvgSellPrice
                 TraderOffer weaponOffer = GetConfiguredTraderOffer(item);
                 int totalPrice = weaponOffer != null ? weaponOffer.Price : 0;
                 int attachmentsPrice = GetWeaponAttachmentTraderPrice(item);
+                int magazinePrice = GetWeaponMagazineTraderPrice(item);
                 bool fallbackToTraderBase = UseFleaPriceSource && IsKnownNotSellableOnFlea(item);
                 int basePrice = fallbackToTraderBase
                     ? totalPrice > 0
-                        ? Math.Max(0, totalPrice - attachmentsPrice)
+                        ? Math.Max(0, totalPrice - attachmentsPrice - magazinePrice)
                         : GetSingleItemPrice(item)
                     : UseFleaPriceSource
                     ? GetSingleItemPrice(item)
                     : totalPrice > 0
-                        ? Math.Max(0, totalPrice - attachmentsPrice)
+                        ? Math.Max(0, totalPrice - attachmentsPrice - magazinePrice)
                         : 0;
 
                 if (UseFleaPriceSource)
                 {
-                    totalPrice = basePrice + attachmentsPrice;
+                    totalPrice = basePrice + attachmentsPrice + magazinePrice;
                 }
 
                 if (basePrice <= 0 && totalPrice <= 0)
@@ -341,11 +342,21 @@ namespace AvgSellPrice
                         : FormatMainPriceWithOptionalTrader(traderName, displayPrice),
                     PluginConfig.MainPriceColor.Value));
 
-                if (showWeaponAttachments && attachmentsPrice > 0)
+                if (showWeaponAttachments && (attachmentsPrice > 0 || magazinePrice > 0))
                 {
-                    weaponLines.Add(Colorize(
-                        "Attachments " + FormatPriceExternal(attachmentsPrice),
-                        PluginConfig.ContentsPriceColor.Value));
+                    if (attachmentsPrice > 0)
+                    {
+                        weaponLines.Add(Colorize(
+                            "Attachments " + FormatPriceExternal(attachmentsPrice),
+                            PluginConfig.ContentsPriceColor.Value));
+                    }
+
+                    if (magazinePrice > 0)
+                    {
+                        weaponLines.Add(Colorize(
+                            "Mag " + FormatPriceExternal(magazinePrice),
+                            PluginConfig.ContentsPriceColor.Value));
+                    }
 
                     weaponLines.Add(Colorize(
                         "Total " + FormatPriceExternal(totalPrice),
@@ -969,13 +980,14 @@ namespace AvgSellPrice
             if (item is Weapon)
             {
                 int attachmentsPrice = GetWeaponAttachmentTraderPrice(item);
+                int magazinePrice = GetWeaponMagazineTraderPrice(item);
                 TraderOffer weaponBaseOffer = GetWeaponBaseTraderSellOffer(item);
                 int basePrice = weaponBaseOffer != null && weaponBaseOffer.Price > 0
                     ? weaponBaseOffer.Price
                     : sellPrice > 0
-                        ? Math.Max(0, sellPrice - attachmentsPrice)
+                        ? Math.Max(0, sellPrice - attachmentsPrice - magazinePrice)
                         : GetTemplateFallbackPrice(item);
-                int totalPrice = basePrice + attachmentsPrice;
+                int totalPrice = basePrice + attachmentsPrice + magazinePrice;
                 string weaponTraderName = PluginConfig.ShowTraderNameInTooltip.Value && weaponBaseOffer != null
                     ? weaponBaseOffer.Name
                     : traderName;
@@ -987,11 +999,21 @@ namespace AvgSellPrice
                         PluginConfig.MainPriceColor.Value));
                 }
 
-                if (PluginConfig.ShowWeaponAttachmentsPrice.Value && attachmentsPrice > 0)
+                if (PluginConfig.ShowWeaponAttachmentsPrice.Value && (attachmentsPrice > 0 || magazinePrice > 0))
                 {
-                    lines.Add(Colorize(
-                        "Attachments " + FormatPriceExternal(attachmentsPrice),
-                        PluginConfig.ContentsPriceColor.Value));
+                    if (attachmentsPrice > 0)
+                    {
+                        lines.Add(Colorize(
+                            "Attachments " + FormatPriceExternal(attachmentsPrice),
+                            PluginConfig.ContentsPriceColor.Value));
+                    }
+
+                    if (magazinePrice > 0)
+                    {
+                        lines.Add(Colorize(
+                            "Mag " + FormatPriceExternal(magazinePrice),
+                            PluginConfig.ContentsPriceColor.Value));
+                    }
 
                     lines.Add(Colorize(
                         "Total " + FormatPriceExternal(totalPrice),
@@ -2467,7 +2489,7 @@ namespace AvgSellPrice
 
             if (UseFleaPriceSource)
             {
-                return total + GetWeaponAttachmentTraderPrice(item);
+                return total + GetWeaponAttachmentTraderPrice(item) + GetWeaponMagazineTraderPrice(item);
             }
 
             return total;
@@ -2526,6 +2548,27 @@ namespace AvgSellPrice
             return total;
         }
 
+        private static int GetWeaponMagazineTraderPrice(Item item)
+        {
+            if (!(item is Weapon))
+            {
+                return 0;
+            }
+
+            int total = 0;
+            List<Item> magazineRoots = GetRootItems(
+                item.GetAllItems()
+                    .Where(child => ShouldCountAsWeaponMagazine(item, child))
+                    .ToList());
+
+            foreach (Item child in magazineRoots)
+            {
+                total += GetSingleItemTotalSellPrice(child);
+            }
+
+            return total;
+        }
+
         private static TraderOffer GetWeaponBaseTraderSellOffer(Item item)
         {
             if (!(item is Weapon))
@@ -2561,15 +2604,94 @@ namespace AvgSellPrice
             }
 
             return !(child is AmmoItemClass) &&
-                   !IsDefaultWeaponPart(weapon, child);
+                   IsRemovableWeaponAttachment(child);
         }
 
-        private static bool IsDefaultWeaponPart(Item weapon, Item part)
+        private static bool ShouldCountAsWeaponMagazine(Item weapon, Item child)
         {
-            string weaponTemplateId = GetTemplateIdSafe(weapon);
-            string partTemplateId = GetTemplateIdSafe(part);
+            if (!(weapon is Weapon) || child == null || child == weapon)
+            {
+                return false;
+            }
 
-            return WeaponDefaultPresetCache.IsDefaultPart(weaponTemplateId, partTemplateId);
+            return IsWeaponMagazine(child);
+        }
+
+        private static bool IsWeaponMagazine(Item item)
+        {
+            if (!IsMagazine(item))
+            {
+                return false;
+            }
+
+            return TryGetItemSlotName(item, out string slotName) &&
+                   IsWeaponMagazineSlot(slotName);
+        }
+
+        private static bool IsWeaponMagazineSlot(string slotName)
+        {
+            if (string.IsNullOrEmpty(slotName))
+            {
+                return false;
+            }
+
+            return slotName.IndexOf("magazine", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsRemovableWeaponAttachment(Item item)
+        {
+            if (item == null)
+            {
+                return false;
+            }
+
+            if (!TryGetItemSlotName(item, out string slotName) ||
+                !IsRemovableWeaponAttachmentSlot(slotName))
+            {
+                return false;
+            }
+
+            if (TryReadTemplateBool(item, "RaidModdable", out bool raidModdable))
+            {
+                return raidModdable;
+            }
+
+            return true;
+        }
+
+        private static bool IsRemovableWeaponAttachmentSlot(string slotName)
+        {
+            if (string.IsNullOrEmpty(slotName))
+            {
+                return false;
+            }
+
+            string lower = slotName.ToLowerInvariant();
+            return lower.Contains("foregrip") ||
+                   lower.Contains("scope") ||
+                   lower.Contains("sight") ||
+                   lower.Contains("muzzle") ||
+                   lower.Contains("silencer") ||
+                   lower.Contains("suppressor") ||
+                   lower.Contains("stock");
+        }
+
+        private static bool TryReadTemplateBool(Item item, string memberName, out bool value)
+        {
+            value = false;
+
+            if (item == null || item.Template == null)
+            {
+                return false;
+            }
+
+            if (TryReadBoolMember(item.Template, memberName, out value))
+            {
+                return true;
+            }
+
+            object props = GetMemberValue(item.Template, "Props", "_props");
+            return props != null && TryReadBoolMember(props, memberName, out value);
         }
 
         private static Item BuildWeaponBaseTraderQueryItem(Item item)
@@ -2584,14 +2706,14 @@ namespace AvgSellPrice
             clone.UnlimitedCount = false;
 
             ClearCompoundGrids(clone as CompoundItem);
-            StripNonDefaultWeaponParts(clone as CompoundItem, GetTemplateIdSafe(item));
+            StripRemovableWeaponAttachments(clone as CompoundItem);
 
             return clone;
         }
 
-        private static void StripNonDefaultWeaponParts(CompoundItem compound, string weaponTemplateId)
+        private static void StripRemovableWeaponAttachments(CompoundItem compound)
         {
-            if (compound == null || string.IsNullOrEmpty(weaponTemplateId) || compound.Slots == null)
+            if (compound == null || compound.Slots == null)
             {
                 return;
             }
@@ -2607,14 +2729,15 @@ namespace AvgSellPrice
                     }
 
                     if (contained is AmmoItemClass ||
-                        !WeaponDefaultPresetCache.IsDefaultPart(weaponTemplateId, GetTemplateIdSafe(contained)))
+                        IsWeaponMagazine(contained) ||
+                        IsRemovableWeaponAttachment(contained))
                     {
                         ClearSlotContainedItem(slot);
                         continue;
                     }
 
                     ClearCompoundGrids(contained as CompoundItem);
-                    StripNonDefaultWeaponParts(contained as CompoundItem, weaponTemplateId);
+                    StripRemovableWeaponAttachments(contained as CompoundItem);
                 }
                 catch
                 {

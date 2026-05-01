@@ -131,6 +131,7 @@ namespace AvgSellPrice
             RaidPlayerState.MainPlayer = null;
             ValueTracker.EndRaid();
             ValueDisplayUI.RequestRefresh();
+            ValueDisplayUI.ShowRaidEndLootValue();
         }
     }
 
