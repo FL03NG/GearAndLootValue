@@ -36,7 +36,7 @@ namespace AvgSellPrice
             {
                 if (!File.Exists(FilePath))
                 {
-                    Plugin.Log?.LogInfo("[AvgSellPrice] No verified armored rig cache file found yet");
+                    Plugin.LogDebug("[AvgSellPrice] No verified armored rig cache file found yet");
                     return;
                 }
 
@@ -65,7 +65,7 @@ namespace AvgSellPrice
                     }
                 }
 
-                Plugin.Log?.LogInfo($"[AvgSellPrice] Loaded {Prices.Count} verified armored rig prices");
+                Plugin.LogDebug($"[AvgSellPrice] Loaded {Prices.Count} verified armored rig prices");
             }
             catch (Exception ex)
             {
@@ -130,7 +130,7 @@ namespace AvgSellPrice
                 File.WriteAllText(FilePath, json);
 
                 _dirty = false;
-                Plugin.Log?.LogInfo($"[AvgSellPrice] Saved {Prices.Count} verified armored rig prices");
+                Plugin.LogDebug($"[AvgSellPrice] Saved {Prices.Count} verified armored rig prices");
             }
             catch (Exception ex)
             {

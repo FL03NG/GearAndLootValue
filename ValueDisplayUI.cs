@@ -20,7 +20,7 @@ namespace AvgSellPrice
         private const int MaxRaidLabelCreateAttempts = 6;
 
         private static readonly Regex EquipmentWeightRegex =
-            new Regex(@"^\s*\d+([.,]\d+)?\s*kg\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            new Regex(@"^\s*\d+([.,]\d+)?\s*kg\s*(/\s*\d+)?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex RaidWeightRegex =
             new Regex(@"^\s*\d+\s*/\s*\d+\s*(kg)?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -45,7 +45,9 @@ namespace AvgSellPrice
         private int _raidLabelCreateAttempts;
         private bool _isTraderSellUiVisible;
         private bool _equipmentInventoryVisible;
+        private bool _equipmentBlockedByExternalScreen;
         private bool _equipmentHidePending;
+        private bool _equipmentShowPending;
         private bool _equipmentLabelRefreshPending;
         private bool _equipmentValueDirty = true;
         private int _equipmentVisibilityVersion;
@@ -62,7 +64,9 @@ namespace AvgSellPrice
         private TextMeshProUGUI _equipmentLabel;
         private TextMeshProUGUI _raidLabel;
         private TextMeshProUGUI _raidEndLabel;
-        private readonly List<PendingItemReconcile> _pendingItemReconciles = new List<PendingItemReconcile>();
+        private bool _raidLootRebuildPending;
+        private float _nextRaidLootRebuildTime;
+        private float _nextEquipmentShowTime;
 
         private void Awake()
         {
@@ -97,6 +101,7 @@ namespace AvgSellPrice
 
             if (ValueTracker.IsInRaid)
             {
+                _equipmentShowPending = false;
                 ProcessBaselineWarmup();
 
                 if ((Input.GetKeyDown(KeyCode.Tab) || Input.GetKeyDown(KeyCode.Escape)) &&
@@ -114,6 +119,12 @@ namespace AvgSellPrice
 
                 ProcessPendingItemReconciles();
                 return;
+            }
+
+            if (_equipmentShowPending && Time.unscaledTime >= _nextEquipmentShowTime)
+            {
+                _equipmentShowPending = false;
+                SetEquipmentInventoryVisible(true);
             }
 
             if (_equipmentLabelRefreshPending && Time.unscaledTime >= _nextEquipmentLabelRefreshTime)
@@ -156,6 +167,18 @@ namespace AvgSellPrice
         }
 
         internal static void RequestEquipmentValueRefresh(float delaySeconds = 0f)
+        {
+            if (Instance == null)
+            {
+                return;
+            }
+
+            Instance._equipmentValueDirty = true;
+            Instance._equipmentLabelRefreshPending = true;
+            Instance._nextEquipmentLabelRefreshTime = Time.unscaledTime + Mathf.Max(0f, delaySeconds);
+        }
+
+        internal static void RequestEquipmentValueRefreshDebounced(float delaySeconds = 0.35f)
         {
             if (Instance == null)
             {
@@ -238,10 +261,7 @@ namespace AvgSellPrice
                 return;
             }
 
-            Instance.AddPendingItemReconcile(item, 0f);
-            Instance.AddPendingItemReconcile(item, 0.1f);
-            Instance.AddPendingItemReconcile(item, 0.5f);
-            Instance.AddPendingItemReconcile(item, 1.5f);
+            Instance.ScheduleRaidLootRebuild(delaySeconds);
         }
 
         internal static void RequestRaidValueTextRefresh()
@@ -260,6 +280,14 @@ namespace AvgSellPrice
             }
         }
 
+        internal static void HideRaidEndLootValueNow()
+        {
+            if (Instance != null)
+            {
+                Instance.HideRaidEndLootValue();
+            }
+        }
+
         internal static void SetInventoryVisible(bool visible)
         {
             if (Instance == null)
@@ -274,6 +302,31 @@ namespace AvgSellPrice
             }
 
             Instance.SetEquipmentInventoryVisible(visible);
+        }
+
+        internal static void SetEquipmentValueBlocked(bool blocked)
+        {
+            if (Instance == null)
+            {
+                return;
+            }
+
+            Instance._equipmentBlockedByExternalScreen = blocked;
+            if (blocked)
+            {
+                Instance.SetEquipmentInventoryVisible(false);
+            }
+        }
+
+        internal static void ShowEquipmentValueForInventory()
+        {
+            if (Instance == null || ValueTracker.IsInRaid)
+            {
+                return;
+            }
+
+            Instance._equipmentBlockedByExternalScreen = false;
+            Instance.SetEquipmentInventoryVisible(true);
         }
 
         internal static void SetRaidInventoryVisible(bool visible)
@@ -308,8 +361,38 @@ namespace AvgSellPrice
                 _equipmentInventoryVisible = false;
                 _equipmentVisibilityVersion++;
                 _equipmentHidePending = false;
+                _equipmentShowPending = false;
                 _equipmentLabelRefreshPending = false;
                 _nextEquipmentVisibleProbeTime = 0f;
+                if (_equipmentOverlayCanvas != null && _equipmentOverlayCanvas.gameObject != null)
+                {
+                    _equipmentOverlayCanvas.SetActive(false);
+                }
+
+                return;
+            }
+
+            if (_equipmentBlockedByExternalScreen)
+            {
+                if (IsDeploymentOrPreviewScreenVisible())
+                {
+                    _equipmentInventoryVisible = false;
+                    HideLabel(_equipmentLabel);
+                    if (_equipmentOverlayCanvas != null && _equipmentOverlayCanvas.gameObject != null)
+                    {
+                        _equipmentOverlayCanvas.SetActive(false);
+                    }
+
+                    return;
+                }
+
+                _equipmentBlockedByExternalScreen = false;
+            }
+
+            if (IsDeploymentOrPreviewScreenVisible())
+            {
+                _equipmentInventoryVisible = false;
+                HideLabel(_equipmentLabel);
                 if (_equipmentOverlayCanvas != null && _equipmentOverlayCanvas.gameObject != null)
                 {
                     _equipmentOverlayCanvas.SetActive(false);
@@ -361,15 +444,27 @@ namespace AvgSellPrice
 
         private void RefreshEquipmentLabel()
         {
-            if (PluginConfig.ShowEquipmentValue != null && !PluginConfig.ShowEquipmentValue.Value)
+            if (IsValueDisplayDisabled() ||
+                PluginConfig.ShowEquipmentValue != null && !PluginConfig.ShowEquipmentValue.Value)
             {
                 HideLabel(_equipmentLabel);
                 return;
             }
 
-            if (!_equipmentInventoryVisible)
+            if (_equipmentBlockedByExternalScreen && !IsDeploymentOrPreviewScreenVisible())
             {
+                _equipmentBlockedByExternalScreen = false;
+            }
+
+            if (!_equipmentInventoryVisible || _equipmentBlockedByExternalScreen)
+            {
+                _equipmentInventoryVisible = false;
                 HideLabel(_equipmentLabel);
+                if (_equipmentOverlayCanvas != null && _equipmentOverlayCanvas.gameObject != null)
+                {
+                    _equipmentOverlayCanvas.SetActive(false);
+                }
+
                 return;
             }
 
@@ -391,10 +486,23 @@ namespace AvgSellPrice
 
         private void RefreshEquipmentLabelTextOnly()
         {
+            if (_equipmentBlockedByExternalScreen && !IsDeploymentOrPreviewScreenVisible())
+            {
+                _equipmentBlockedByExternalScreen = false;
+            }
+
             if (!_equipmentInventoryVisible ||
+                _equipmentBlockedByExternalScreen ||
+                IsValueDisplayDisabled() ||
                 PluginConfig.ShowEquipmentValue != null && !PluginConfig.ShowEquipmentValue.Value)
             {
+                _equipmentInventoryVisible = false;
                 HideLabel(_equipmentLabel);
+                if (_equipmentOverlayCanvas != null && _equipmentOverlayCanvas.gameObject != null)
+                {
+                    _equipmentOverlayCanvas.SetActive(false);
+                }
+
                 return;
             }
 
@@ -422,7 +530,8 @@ namespace AvgSellPrice
 
         private void RefreshRaidLabel()
         {
-            if (PluginConfig.ShowRaidLootValue != null && !PluginConfig.ShowRaidLootValue.Value)
+            if (IsValueDisplayDisabled() ||
+                PluginConfig.ShowRaidLootValue != null && !PluginConfig.ShowRaidLootValue.Value)
             {
                 HideLabel(_raidLabel);
                 return;
@@ -440,7 +549,8 @@ namespace AvgSellPrice
 
         private void RefreshRaidLabelTextOnly()
         {
-            if (PluginConfig.ShowRaidLootValue != null && !PluginConfig.ShowRaidLootValue.Value)
+            if (IsValueDisplayDisabled() ||
+                PluginConfig.ShowRaidLootValue != null && !PluginConfig.ShowRaidLootValue.Value)
             {
                 HideLabel(_raidLabel);
                 return;
@@ -461,7 +571,8 @@ namespace AvgSellPrice
 
         private void RefreshRaidEndLootValue()
         {
-            if (PluginConfig.ShowRaidLootValue != null && !PluginConfig.ShowRaidLootValue.Value)
+            if (IsValueDisplayDisabled() ||
+                PluginConfig.ShowRaidLootValue != null && !PluginConfig.ShowRaidLootValue.Value)
             {
                 HideLabel(_raidEndLabel);
                 return;
@@ -475,7 +586,7 @@ namespace AvgSellPrice
             }
 
             _raidEndLabel.text = $"Raid Loot: <b>{ItemExtensions.FormatMoneyUi(value)} ₽</b>";
-            _raidEndLabel.color = GetRaidValueColor(value);
+            _raidEndLabel.color = Color.red;
             _raidEndBox.SetActive(true);
 
             if (_raidEndOverlayCanvas != null && _raidEndOverlayCanvas.gameObject != null)
@@ -484,26 +595,30 @@ namespace AvgSellPrice
             }
         }
 
+        private void HideRaidEndLootValue()
+        {
+            HideLabel(_raidEndLabel);
+            if (_raidEndOverlayCanvas != null && _raidEndOverlayCanvas.gameObject != null)
+            {
+                _raidEndOverlayCanvas.SetActive(false);
+            }
+        }
+
         private void ProcessPendingItemReconciles()
         {
-            if (_pendingItemReconciles.Count == 0)
+            if (!_raidLootRebuildPending)
             {
                 return;
             }
 
-            float now = Time.unscaledTime;
-            for (int i = _pendingItemReconciles.Count - 1; i >= 0; i--)
+            if (Time.unscaledTime < _nextRaidLootRebuildTime)
             {
-                PendingItemReconcile pending = _pendingItemReconciles[i];
-                if (pending.ReadyTime > now)
-                {
-                    continue;
-                }
-
-                _pendingItemReconciles.RemoveAt(i);
-                ValueTracker.RebuildRaidLootValueFromInventory();
-                RefreshRaidLabelTextOnly();
+                return;
             }
+
+            _raidLootRebuildPending = false;
+            ValueTracker.RebuildRaidLootValueFromInventory();
+            RefreshRaidLabelTextOnly();
         }
 
         private void ProcessBaselineWarmup()
@@ -531,11 +646,15 @@ namespace AvgSellPrice
             RefreshRaidLabelTextOnly();
         }
 
-        private void AddPendingItemReconcile(Item item, float delaySeconds)
+        private void ScheduleRaidLootRebuild(float delaySeconds)
         {
-            _pendingItemReconciles.Add(new PendingItemReconcile(
-                item,
-                Time.unscaledTime + Mathf.Max(0f, delaySeconds)));
+            float readyTime = Time.unscaledTime + Mathf.Max(0f, delaySeconds);
+            if (!_raidLootRebuildPending || readyTime < _nextRaidLootRebuildTime)
+            {
+                _nextRaidLootRebuildTime = readyTime;
+            }
+
+            _raidLootRebuildPending = true;
         }
 
         private float GetNextRaidLabelCreateDelay()
@@ -690,7 +809,7 @@ namespace AvgSellPrice
                 _raidEndBox.transform.SetParent(_raidEndOverlayCanvas.transform, false);
             }
 
-            ConfigureOverlayBox(_raidEndBox, _raidEndLabel, new Vector2(705f, 295f), 510f, 58f, 30f);
+            ConfigureOverlayBox(_raidEndBox, _raidEndLabel, new Vector2(680f, 195f), 560f, 70f, 38f);
             _raidEndLabel.alignment = TextAlignmentOptions.Midline;
 
             return _raidEndLabel;
@@ -797,8 +916,12 @@ namespace AvgSellPrice
             _raidLabelCreateAttempts = 0;
             _equipmentInventoryVisible = false;
             _equipmentHidePending = false;
+            _equipmentShowPending = false;
             _equipmentLabelRefreshPending = false;
-            _pendingItemReconciles.Clear();
+            _equipmentBlockedByExternalScreen = false;
+            _raidLootRebuildPending = false;
+            _nextRaidLootRebuildTime = 0f;
+            _nextEquipmentShowTime = 0f;
             _nextTraderUiScanTime = 0f;
             _isTraderSellUiVisible = false;
             _equipmentValueDirty = true;
@@ -837,6 +960,11 @@ namespace AvgSellPrice
         {
             try
             {
+                if (IsDeploymentOrPreviewScreenVisible())
+                {
+                    return false;
+                }
+
                 HashSet<string> visibleTexts = Resources.FindObjectsOfTypeAll<TextMeshProUGUI>()
                     .Where(IsUsableTextComponent)
                     .Select(text => NormalizeText(text.text))
@@ -862,6 +990,42 @@ namespace AvgSellPrice
             {
                 return false;
             }
+        }
+
+        private static bool IsDeploymentOrPreviewScreenVisible()
+        {
+            try
+            {
+                foreach (TextMeshProUGUI text in Resources.FindObjectsOfTypeAll<TextMeshProUGUI>())
+                {
+                    if (!IsUsableTextComponent(text))
+                    {
+                        continue;
+                    }
+
+                    string normalized = NormalizeText(text.text);
+                    if (string.IsNullOrEmpty(normalized))
+                    {
+                        continue;
+                    }
+
+                    if (normalized.IndexOf("DEPLOYING TO LOCATION", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        normalized.IndexOf("Equipment preview", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        string.Equals(normalized, "INSURANCE", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(normalized, "SELECT INSURER", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(normalized, "SELECT ITEMS", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(normalized, "TO INSURE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+                return false;
+            }
+
+            return false;
         }
 
         private TextMeshProUGUI GetRaidAnchor()
@@ -1147,6 +1311,26 @@ namespace AvgSellPrice
 
         private static Color GetRaidValueColor(int value)
         {
+            return GetThresholdColor(
+                value,
+                PluginConfig.RaidValueLowColor.Value,
+                PluginConfig.RaidValueMidColor.Value,
+                PluginConfig.RaidValueHighColor.Value,
+                PluginConfig.RaidValueMaxColor.Value);
+        }
+
+        private static bool IsValueDisplayDisabled()
+        {
+            return PluginConfig.EnableValueDisplay != null && !PluginConfig.EnableValueDisplay.Value;
+        }
+
+        private static Color GetThresholdColor(
+            int value,
+            Color lowColor,
+            Color midColor,
+            Color highColor,
+            Color maxColor)
+        {
             int mid = PluginConfig.RaidValueMidThreshold.Value;
             int high = PluginConfig.RaidValueHighThreshold.Value;
             int max = PluginConfig.RaidValueMaxThreshold.Value;
@@ -1155,8 +1339,8 @@ namespace AvgSellPrice
             {
                 float t = mid <= 0 ? 1f : (float)value / mid;
                 return Color.Lerp(
-                    PluginConfig.RaidValueLowColor.Value,
-                    PluginConfig.RaidValueMidColor.Value,
+                    lowColor,
+                    midColor,
                     Mathf.Clamp01(t));
             }
 
@@ -1164,29 +1348,18 @@ namespace AvgSellPrice
             {
                 float t = high <= mid ? 1f : (float)(value - mid) / (high - mid);
                 return Color.Lerp(
-                    PluginConfig.RaidValueMidColor.Value,
-                    PluginConfig.RaidValueHighColor.Value,
+                    midColor,
+                    highColor,
                     Mathf.Clamp01(t));
             }
 
             float finalT = max <= high ? 1f : (float)(value - high) / (max - high);
             return Color.Lerp(
-                PluginConfig.RaidValueHighColor.Value,
-                PluginConfig.RaidValueMaxColor.Value,
+                highColor,
+                maxColor,
                 Mathf.Clamp01(finalT));
         }
 
-        private sealed class PendingItemReconcile
-        {
-            public PendingItemReconcile(Item item, float readyTime)
-            {
-                Item = item;
-                ReadyTime = readyTime;
-            }
-
-            public Item Item { get; }
-            public float ReadyTime { get; }
-        }
     }
 }
 

@@ -12,6 +12,27 @@ namespace AvgSellPrice
     {
         internal static BepInEx.Logging.ManualLogSource Log;
 
+        internal static void LogDebug(string message)
+        {
+            if (PluginConfig.DebugLogging != null && PluginConfig.DebugLogging.Value)
+            {
+                Log?.LogInfo(message);
+            }
+        }
+
+        private static void EnablePatch(ModulePatch patch, string name)
+        {
+            try
+            {
+                patch.Enable();
+                Log.LogInfo(name + " enabled");
+            }
+            catch (System.Exception ex)
+            {
+                Log.LogError(name + " failed: " + ex);
+            }
+        }
+
         private void Awake()
         {
             Log = Logger;
@@ -35,86 +56,41 @@ namespace AvgSellPrice
             WeaponDefaultPresetCache.Load();
             Log.LogInfo("WeaponDefaultPresetCache.Load called");
 
-            new TraderPatch().Enable();
-            Log.LogInfo("TraderPatch enabled");
-
-            new ItemPatch().Enable();
-            Log.LogInfo("ItemPatch enabled");
-
-            new AmmoItemPatch().Enable();
-            Log.LogInfo("AmmoItemPatch enabled");
-
-            new ThrowWeapItemPatch().Enable();
-            Log.LogInfo("ThrowWeapItemPatch enabled");
-
-            new GridItemOnPointerEnterPatch().Enable();
-            Log.LogInfo("GridItemOnPointerEnterPatch enabled");
-
-            new GridItemOnPointerExitPatch().Enable();
-            Log.LogInfo("GridItemOnPointerExitPatch enabled");
-
-            new SimpleTooltipShowPatch().Enable();
-            Log.LogInfo("SimpleTooltipShowPatch enabled");
-
-            new PlayerItemAddedPatch().Enable();
-            Log.LogInfo("PlayerItemAddedPatch enabled");
-
-            new PlayerItemRemovedPatch().Enable();
-            Log.LogInfo("PlayerItemRemovedPatch enabled");
-
-            new RaidStartPatch().Enable();
-            Log.LogInfo("RaidStartPatch enabled");
-
-            new RaidEndPatch().Enable();
-            Log.LogInfo("RaidEndPatch enabled");
-
-            new ContainersPanelShowPatch().Enable();
-            Log.LogInfo("ContainersPanelShowPatch enabled");
-
-            new EquipmentTabShowPatch().Enable();
-            Log.LogInfo("EquipmentTabShowPatch enabled");
-
-            new EquipmentTabHidePatch().Enable();
-            Log.LogInfo("EquipmentTabHidePatch enabled");
-
-            new InventoryScreenClosePatch().Enable();
-            Log.LogInfo("InventoryScreenClosePatch enabled");
-
-            new InventoryScreenTabSwitchPatch().Enable();
-            Log.LogInfo("InventoryScreenTabSwitchPatch enabled");
-
-            new InventoryTabPointerClickPatch().Enable();
-            Log.LogInfo("InventoryTabPointerClickPatch enabled");
-
-            new OverallScreenShowPatch().Enable();
-            Log.LogInfo("OverallScreenShowPatch enabled");
-
-            new SkillsScreenShowPatch().Enable();
-            Log.LogInfo("SkillsScreenShowPatch enabled");
-
-            new CharacterHealthPanelShowPatch().Enable();
-            Log.LogInfo("CharacterHealthPanelShowPatch enabled");
-
-            new CharacterHealthPanelAnimatedShowPatch().Enable();
-            Log.LogInfo("CharacterHealthPanelAnimatedShowPatch enabled");
-
-            new TextGameMapPanelShowPatch().Enable();
-            Log.LogInfo("TextGameMapPanelShowPatch enabled");
-
-            new TasksScreenShowPatch().Enable();
-            Log.LogInfo("TasksScreenShowPatch enabled");
-
-            new AchievementsScreenShowPatch().Enable();
-            Log.LogInfo("AchievementsScreenShowPatch enabled");
-
-            new PrestigeScreenShowPatch().Enable();
-            Log.LogInfo("PrestigeScreenShowPatch enabled");
-
-            new InventoryControllerRaiseAddEventPatch().Enable();
-            Log.LogInfo("InventoryControllerRaiseAddEventPatch enabled");
-
-            new InventoryControllerRaiseRemoveEventPatch().Enable();
-            Log.LogInfo("InventoryControllerRaiseRemoveEventPatch enabled");
+            EnablePatch(new TraderPatch(), "TraderPatch");
+            EnablePatch(new ItemPatch(), "ItemPatch");
+            EnablePatch(new AmmoItemPatch(), "AmmoItemPatch");
+            EnablePatch(new ThrowWeapItemPatch(), "ThrowWeapItemPatch");
+            EnablePatch(new GridItemOnPointerEnterPatch(), "GridItemOnPointerEnterPatch");
+            EnablePatch(new GridItemOnPointerExitPatch(), "GridItemOnPointerExitPatch");
+            EnablePatch(new SimpleTooltipShowPatch(), "SimpleTooltipShowPatch");
+            EnablePatch(new PlayerItemAddedPatch(), "PlayerItemAddedPatch");
+            EnablePatch(new PlayerItemRemovedPatch(), "PlayerItemRemovedPatch");
+            EnablePatch(new RaidStartPatch(), "RaidStartPatch");
+            EnablePatch(new RaidEndPatch(), "RaidEndPatch");
+            EnablePatch(new ContainersPanelShowPatch(), "ContainersPanelShowPatch");
+            EnablePatch(new EquipmentTabShowPatch(), "EquipmentTabShowPatch");
+            EnablePatch(new InventoryScreenShowPatch(), "InventoryScreenShowPatch");
+            EnablePatch(new EquipmentTabHidePatch(), "EquipmentTabHidePatch");
+            EnablePatch(new InventoryScreenClosePatch(), "InventoryScreenClosePatch");
+            EnablePatch(new InventoryScreenTabSwitchPatch(), "InventoryScreenTabSwitchPatch");
+            EnablePatch(new InventoryTabPointerClickPatch(), "InventoryTabPointerClickPatch");
+            EnablePatch(new OverallScreenShowPatch(), "OverallScreenShowPatch");
+            EnablePatch(new SkillsScreenShowPatch(), "SkillsScreenShowPatch");
+            EnablePatch(new CharacterHealthPanelShowPatch(), "CharacterHealthPanelShowPatch");
+            EnablePatch(new CharacterHealthPanelAnimatedShowPatch(), "CharacterHealthPanelAnimatedShowPatch");
+            EnablePatch(new TextGameMapPanelShowPatch(), "TextGameMapPanelShowPatch");
+            EnablePatch(new TasksScreenShowPatch(), "TasksScreenShowPatch");
+            EnablePatch(new AchievementsScreenShowPatch(), "AchievementsScreenShowPatch");
+            EnablePatch(new PrestigeScreenShowPatch(), "PrestigeScreenShowPatch");
+            EnablePatch(new InventoryControllerRaiseAddEventPatch(), "InventoryControllerRaiseAddEventPatch");
+            EnablePatch(new InventoryControllerRaiseRemoveEventPatch(), "InventoryControllerRaiseRemoveEventPatch");
+            EnablePatch(new RaidEndSummaryShowPatch(), "RaidEndSummaryShowPatch");
+            EnablePatch(new RaidEndExperienceShowPatch(), "RaidEndExperienceShowPatch");
+            EnablePatch(new RaidEndKillListShowPatch(), "RaidEndKillListShowPatch");
+            EnablePatch(new RaidEndStatisticsShowPatch(), "RaidEndStatisticsShowPatch");
+            EnablePatch(new RaidEndHealthTreatmentShowPatch(), "RaidEndHealthTreatmentShowPatch");
+            EnablePatch(new MatchmakerInsuranceScreenShowPatch(), "MatchmakerInsuranceScreenShowPatch");
+            EnablePatch(new MatchmakerInsuranceScreenClosePatch(), "MatchmakerInsuranceScreenClosePatch");
 
             if (GetComponent<ValueDisplayUI>() == null)
             {

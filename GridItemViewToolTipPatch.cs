@@ -77,7 +77,7 @@ namespace AvgSellPrice
 
                 Item item = __instance.Item;
 
-                Plugin.Log?.LogInfo(
+                Plugin.LogDebug(
                     $"[AvgSellPrice] Tooltip owner type: ownerType={item.Owner?.OwnerType.ToString() ?? "NULL"} class={item.Owner?.GetType().Name ?? "NULL"}");
 
 

@@ -85,6 +85,7 @@ namespace AvgSellPrice
     internal static class ItemExtensions
     {
         private static ISession _session;
+        private static PriceSource? _priceSourceOverride;
         private static readonly HashSet<string> EquipmentRootSlotNames =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -105,7 +106,7 @@ namespace AvgSellPrice
                 "Pockets"
             };
 
-        private static readonly Dictionary<string, int> CachedBasePricesByTemplateId =
+        private static readonly Dictionary<string, int> CachedBasePricesByTemplateAndSource =
             new Dictionary<string, int>();
 
         private static ISession Session
@@ -217,12 +218,34 @@ namespace AvgSellPrice
                 return string.Empty;
             }
 
+            if (PluginConfig.EnableHoverColors != null && !PluginConfig.EnableHoverColors.Value)
+            {
+                return text;
+            }
+
             return $"<color={ToRichTextColor(color)}>{text}</color>";
         }
+
+        private static bool ShowContentsBreakdown =>
+            PluginConfig.ShowContentsPrice == null || PluginConfig.ShowContentsPrice.Value;
+
+        private static bool ShowPlatesBreakdown =>
+            PluginConfig.ShowPlatesPrice == null || PluginConfig.ShowPlatesPrice.Value;
+
+        private static bool ShowMagazineBreakdown =>
+            PluginConfig.ShowMagazinePrice == null || PluginConfig.ShowMagazinePrice.Value;
+
+        private static bool ShowAmmoPrice =>
+            PluginConfig.ShowAmmoPrice == null || PluginConfig.ShowAmmoPrice.Value;
 
         public static string GetHoverPriceText(this Item item)
         {
             if (item == null)
+            {
+                return string.Empty;
+            }
+
+            if (PluginConfig.EnablePrice != null && !PluginConfig.EnablePrice.Value)
             {
                 return string.Empty;
             }
@@ -239,6 +262,11 @@ namespace AvgSellPrice
 
             if (item is AmmoItemClass)
             {
+                if (!ShowAmmoPrice)
+                {
+                    return string.Empty;
+                }
+
                 TraderOffer ammoOffer = GetConfiguredTraderOffer(item);
                 int ammoPrice = IsTraderStockItem(item)
                     ? GetSingleItemPrice(item)
@@ -249,15 +277,17 @@ namespace AvgSellPrice
                     return string.Empty;
                 }
 
-                return Colorize(
+                List<string> ammoLines = new List<string>();
+                AddAlwaysFleaBaseLine(ammoLines, item, applyMinimum: false);
+                ammoLines.Add(Colorize(
                     FormatMainPriceWithOptionalTrader(ammoOffer.Name, ammoPrice, applyMinimum: false),
-                    PluginConfig.MainPriceColor.Value);
+                    PluginConfig.MainPriceColor.Value));
+                return string.Join(Environment.NewLine, ammoLines);
             }
 
             if (IsMagazine(item))
             {
-                bool includeMagazineAmmo = PluginConfig.IncludeAmmoInValues == null ||
-                                           PluginConfig.IncludeAmmoInValues.Value;
+                bool includeMagazineAmmo = ShowAmmoPrice;
                 TraderOffer totalOffer = GetConfiguredTraderOffer(item);
                 int ammoPrice = includeMagazineAmmo ? GetLoadedAmmoTraderPrice(item) : 0;
                 int totalPrice = totalOffer != null ? totalOffer.Price : 0;
@@ -282,6 +312,7 @@ namespace AvgSellPrice
                     : string.Empty;
 
                 List<string> magazineLines = new List<string>();
+                AddAlwaysFleaBaseLine(magazineLines, item);
                 magazineLines.Add(Colorize(
                     FormatMainPriceWithOptionalTrader(traderName, basePrice > 0 ? basePrice : totalPrice),
                     PluginConfig.MainPriceColor.Value));
@@ -330,32 +361,41 @@ namespace AvgSellPrice
                 string traderName = PluginConfig.ShowTraderNameInTooltip.Value && weaponOffer != null
                     ? weaponOffer.Name
                     : string.Empty;
-                bool showWeaponAttachments = PluginConfig.ShowWeaponAttachmentsPrice.Value;
-                int displayPrice = showWeaponAttachments
-                    ? (basePrice > 0 ? basePrice : totalPrice)
-                    : totalPrice;
+                bool showWeaponAttachments = PluginConfig.ShowWeaponAttachmentsPrice == null ||
+                                             PluginConfig.ShowWeaponAttachmentsPrice.Value;
+                bool showMagazine = ShowMagazineBreakdown;
+                int visibleBasePrice = basePrice > 0 ? basePrice : totalPrice;
+                if (!showMagazine)
+                {
+                    visibleBasePrice += magazinePrice;
+                }
+                if (!showWeaponAttachments)
+                {
+                    visibleBasePrice += attachmentsPrice;
+                }
 
                 List<string> weaponLines = new List<string>();
+                AddAlwaysFleaBaseLine(weaponLines, item);
                 weaponLines.Add(Colorize(
                     fallbackToTraderBase
-                        ? FormatBasePriceWithOptionalTrader(traderName, displayPrice)
-                        : FormatMainPriceWithOptionalTrader(traderName, displayPrice),
+                        ? FormatBasePriceWithOptionalTrader(traderName, visibleBasePrice)
+                        : FormatMainPriceWithOptionalTrader(traderName, visibleBasePrice),
                     PluginConfig.MainPriceColor.Value));
 
-                if (showWeaponAttachments && (attachmentsPrice > 0 || magazinePrice > 0))
+                if (showWeaponAttachments && attachmentsPrice > 0 || showMagazine && magazinePrice > 0)
                 {
-                    if (attachmentsPrice > 0)
-                    {
-                        weaponLines.Add(Colorize(
-                            "Attachments " + FormatPriceExternal(attachmentsPrice),
-                            PluginConfig.ContentsPriceColor.Value));
-                    }
-
-                    if (magazinePrice > 0)
+                    if (showMagazine && magazinePrice > 0)
                     {
                         weaponLines.Add(Colorize(
                             "Mag " + FormatPriceExternal(magazinePrice),
-                            PluginConfig.ContentsPriceColor.Value));
+                            PluginConfig.MagazinePriceColor.Value));
+                    }
+
+                    if (showWeaponAttachments && attachmentsPrice > 0)
+                    {
+                        weaponLines.Add(Colorize(
+                            "Attachments " + FormatPriceExternal(attachmentsPrice),
+                            PluginConfig.AttachmentsPriceColor.Value));
                     }
 
                     weaponLines.Add(Colorize(
@@ -392,6 +432,7 @@ namespace AvgSellPrice
                     : string.Empty;
 
                 List<string> lines = new List<string>();
+                AddAlwaysFleaBaseLine(lines, item);
                 lines.Add(Colorize(
                     FormatMainPriceWithOptionalTrader(traderName, basePrice > 0 ? basePrice : totalPrice),
                     PluginConfig.MainPriceColor.Value));
@@ -400,7 +441,7 @@ namespace AvgSellPrice
                 {
                     lines.Add(Colorize(
                         "Attachments " + FormatPriceExternal(attachmentsPrice),
-                        PluginConfig.ContentsPriceColor.Value));
+                        PluginConfig.AttachmentsPriceColor.Value));
 
                     lines.Add(Colorize(
                         "Total " + FormatPriceExternal(totalPrice),
@@ -429,31 +470,42 @@ namespace AvgSellPrice
 
                 if (ShouldHideContentsForUnsearchedItem(item))
                 {
-                    return baseLine + Environment.NewLine + GetUnsearchedHoverLine();
+                    List<string> unsearchedLines = new List<string>();
+                    AddAlwaysFleaBaseLine(unsearchedLines, item);
+                    unsearchedLines.Add(baseLine);
+                    unsearchedLines.Add(GetUnsearchedHoverLine());
+                    return string.Join(Environment.NewLine, unsearchedLines);
                 }
 
                 int platesPrice = GetArmorPlateTraderPrice(item);
                 int contentsPrice = GetContentsTraderPrice(item);
-                int totalPrice = rigPrice + platesPrice + contentsPrice;
+                bool showPlates = ShowPlatesBreakdown;
+                bool showContents = ShowContentsBreakdown;
+                int displayBasePrice = rigPrice + (showPlates ? 0 : platesPrice);
+                int visibleContentsPrice = showContents ? contentsPrice : 0;
+                int totalPrice = displayBasePrice + (showPlates ? platesPrice : 0) + visibleContentsPrice;
 
                 List<string> rigLines = new List<string>();
-                rigLines.Add(baseLine);
+                AddAlwaysFleaBaseLine(rigLines, item);
+                rigLines.Add(Colorize(
+                    FormatMainPriceWithOptionalTrader(traderName, displayBasePrice),
+                    PluginConfig.MainPriceColor.Value));
 
-                if (platesPrice > 0)
+                if (showPlates && platesPrice > 0)
                 {
                     rigLines.Add(Colorize(
                         "Plates " + FormatPriceExternal(platesPrice),
                         PluginConfig.PlatesPriceColor.Value));
                 }
 
-                if (contentsPrice > 0)
+                if (showContents && contentsPrice > 0)
                 {
                     rigLines.Add(Colorize(
                         "Contents " + FormatContentsPriceVisual(contentsPrice),
                         PluginConfig.ContentsPriceColor.Value));
                 }
 
-                if (platesPrice > 0 || contentsPrice > 0)
+                if (showPlates && platesPrice > 0 || showContents && contentsPrice > 0)
                 {
                     rigLines.Add(Colorize(
                         "Total " + FormatPriceExternal(totalPrice),
@@ -471,17 +523,20 @@ namespace AvgSellPrice
 
                 if (totalPrice > 0)
                 {
+                    bool showPlates = ShowPlatesBreakdown;
                     int basePrice = Math.Max(0, totalPrice - platesPrice);
+                    int displayBasePrice = basePrice + (showPlates ? 0 : platesPrice);
                     string traderName = PluginConfig.ShowTraderNameInTooltip.Value && totalOffer != null
                         ? totalOffer.Name
                         : string.Empty;
 
                     List<string> lines = new List<string>();
+                    AddAlwaysFleaBaseLine(lines, item);
                     lines.Add(Colorize(
-                        FormatMainPriceWithOptionalTrader(traderName, basePrice > 0 ? basePrice : totalPrice),
+                        FormatMainPriceWithOptionalTrader(traderName, displayBasePrice > 0 ? displayBasePrice : totalPrice),
                         PluginConfig.MainPriceColor.Value));
 
-                    if (platesPrice > 0)
+                    if (showPlates && platesPrice > 0)
                     {
                         lines.Add(Colorize(
                             "Plates " + FormatPriceExternal(platesPrice),
@@ -499,8 +554,8 @@ namespace AvgSellPrice
 
             if (IsRealContainer(item))
             {
-                if (PluginConfig.IncludeCasesInValues != null &&
-                    !PluginConfig.IncludeCasesInValues.Value)
+                if (PluginConfig.ShowCasePrice != null &&
+                    !PluginConfig.ShowCasePrice.Value)
                 {
                     return string.Empty;
                 }
@@ -527,13 +582,26 @@ namespace AvgSellPrice
 
                 if (ShouldHideContentsForUnsearchedItem(item))
                 {
-                    return baseLine + Environment.NewLine + GetUnsearchedHoverLine();
+                    List<string> unsearchedLines = new List<string>();
+                    AddAlwaysFleaBaseLine(unsearchedLines, item);
+                    unsearchedLines.Add(baseLine);
+                    unsearchedLines.Add(GetUnsearchedHoverLine());
+                    return string.Join(Environment.NewLine, unsearchedLines);
+                }
+
+                if (!ShowContentsBreakdown)
+                {
+                    List<string> baseOnlyLines = new List<string>();
+                    AddAlwaysFleaBaseLine(baseOnlyLines, item);
+                    baseOnlyLines.Add(baseLine);
+                    return string.Join(Environment.NewLine, baseOnlyLines);
                 }
 
                 int contentsPrice = GetContentsTraderPrice(item);
                 int totalPrice = basePrice + contentsPrice;
 
                 List<string> lines = new List<string>();
+                AddAlwaysFleaBaseLine(lines, item);
                 lines.Add(baseLine);
 
                 if (contentsPrice > 0)
@@ -559,9 +627,12 @@ namespace AvgSellPrice
                 return string.Empty;
             }
 
-            return Colorize(
+            List<string> fallbackLines = new List<string>();
+            AddAlwaysFleaBaseLine(fallbackLines, item);
+            fallbackLines.Add(Colorize(
                 FormatMainPriceWithOptionalTrader(fallbackOffer.Name, fallbackOffer.Price),
-                PluginConfig.MainPriceColor.Value);
+                PluginConfig.MainPriceColor.Value));
+            return string.Join(Environment.NewLine, fallbackLines);
         }
 
         private static bool IsInTraderSellScreen()
@@ -610,6 +681,33 @@ namespace AvgSellPrice
                    ownerClass.IndexOf("Trader", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
+        private static void AddAlwaysFleaBaseLine(List<string> lines, Item item, bool applyMinimum = true)
+        {
+            if (lines == null ||
+                item == null ||
+                UseFleaPriceSource ||
+                PluginConfig.AlwaysShowFlea == null ||
+                !PluginConfig.AlwaysShowFlea.Value)
+            {
+                return;
+            }
+
+            if (IsKnownNotSellableOnFlea(item))
+            {
+                lines.Add(Colorize("Not sellable on flea", PluginConfig.NotSellableOnFleaColor.Value));
+                return;
+            }
+
+            int fleaPrice = GetFleaTemplatePrice(item);
+            if (fleaPrice <= 0)
+            {
+                return;
+            }
+
+            int price = applyMinimum ? ApplyMinimumPrice(fleaPrice) : fleaPrice;
+            lines.Add(Colorize("Flea " + FormatPriceExternal(price), PluginConfig.MainPriceColor.Value));
+        }
+
         private static string FormatMainPriceWithOptionalTrader(string traderName, int rawPrice, bool applyMinimum = true)
         {
             int price = applyMinimum ? ApplyMinimumPrice(rawPrice) : rawPrice;
@@ -618,26 +716,14 @@ namespace AvgSellPrice
                 ? FormatPrecise(price)
                 : FormatPrice(price);
 
-            bool showAround = PluginConfig.ShowAroundPrefix.Value && !PluginConfig.PrecisePrice.Value;
-
             if (!PluginConfig.ShowTraderNameInTooltip.Value || string.IsNullOrEmpty(traderName))
             {
-                if (showAround)
-                {
-                    return "Around " + formattedPrice;
-                }
-
                 if (!PluginConfig.ShowTraderNameInTooltip.Value)
                 {
                     return (UseFleaPriceSource ? "Flea " : "Base ") + formattedPrice;
                 }
 
                 return formattedPrice;
-            }
-
-            if (showAround)
-            {
-                return traderName + " around " + formattedPrice;
             }
 
             return traderName + " " + formattedPrice;
@@ -651,16 +737,9 @@ namespace AvgSellPrice
                 ? FormatPrecise(price)
                 : FormatPrice(price);
 
-            bool showAround = PluginConfig.ShowAroundPrefix.Value && !PluginConfig.PrecisePrice.Value;
-
             if (!PluginConfig.ShowTraderNameInTooltip.Value || string.IsNullOrEmpty(traderName))
             {
-                return (showAround ? "Around Base " : "Base ") + formattedPrice;
-            }
-
-            if (showAround)
-            {
-                return "Around " + traderName + " " + formattedPrice;
+                return "Base " + formattedPrice;
             }
 
             return traderName + " " + formattedPrice;
@@ -718,8 +797,19 @@ namespace AvgSellPrice
         }
 
         private static bool UseFleaPriceSource =>
-            PluginConfig.ItemPriceSource != null &&
-            PluginConfig.ItemPriceSource.Value == PriceSource.FleaMarket;
+            GetActivePriceSource() == PriceSource.FleaMarket;
+
+        private static PriceSource GetActivePriceSource()
+        {
+            if (_priceSourceOverride.HasValue)
+            {
+                return _priceSourceOverride.Value;
+            }
+
+            return PluginConfig.ItemPriceSource != null
+                ? PluginConfig.ItemPriceSource.Value
+                : PriceSource.TraderSell;
+        }
 
         private static int GetFleaTemplatePrice(Item item)
         {
@@ -963,6 +1053,11 @@ namespace AvgSellPrice
 
             if (item is AmmoItemClass)
             {
+                if (!ShowAmmoPrice)
+                {
+                    return string.Join(Environment.NewLine, lines);
+                }
+
                 int ammoPrice = IsTraderStockItem(item)
                     ? GetSingleItemPrice(item)
                     : GetSingleItemTotalSellPrice(item);
@@ -991,28 +1086,40 @@ namespace AvgSellPrice
                 string weaponTraderName = PluginConfig.ShowTraderNameInTooltip.Value && weaponBaseOffer != null
                     ? weaponBaseOffer.Name
                     : traderName;
+                bool showWeaponAttachments = PluginConfig.ShowWeaponAttachmentsPrice == null ||
+                                             PluginConfig.ShowWeaponAttachmentsPrice.Value;
+                bool showMagazine = ShowMagazineBreakdown;
+                int visibleBasePrice = basePrice > 0 ? basePrice : totalPrice;
+                if (!showMagazine)
+                {
+                    visibleBasePrice += magazinePrice;
+                }
+                if (!showWeaponAttachments)
+                {
+                    visibleBasePrice += attachmentsPrice;
+                }
 
                 if (basePrice > 0 || totalPrice > 0)
                 {
                     lines.Add(Colorize(
-                        FormatBasePriceWithOptionalTrader(weaponTraderName, basePrice > 0 ? basePrice : totalPrice),
+                        FormatBasePriceWithOptionalTrader(weaponTraderName, visibleBasePrice),
                         PluginConfig.MainPriceColor.Value));
                 }
 
-                if (PluginConfig.ShowWeaponAttachmentsPrice.Value && (attachmentsPrice > 0 || magazinePrice > 0))
+                if (showWeaponAttachments && attachmentsPrice > 0 || showMagazine && magazinePrice > 0)
                 {
-                    if (attachmentsPrice > 0)
-                    {
-                        lines.Add(Colorize(
-                            "Attachments " + FormatPriceExternal(attachmentsPrice),
-                            PluginConfig.ContentsPriceColor.Value));
-                    }
-
-                    if (magazinePrice > 0)
+                    if (showMagazine && magazinePrice > 0)
                     {
                         lines.Add(Colorize(
                             "Mag " + FormatPriceExternal(magazinePrice),
-                            PluginConfig.ContentsPriceColor.Value));
+                            PluginConfig.MagazinePriceColor.Value));
+                    }
+
+                    if (showWeaponAttachments && attachmentsPrice > 0)
+                    {
+                        lines.Add(Colorize(
+                            "Attachments " + FormatPriceExternal(attachmentsPrice),
+                            PluginConfig.AttachmentsPriceColor.Value));
                     }
 
                     lines.Add(Colorize(
@@ -1042,7 +1149,7 @@ namespace AvgSellPrice
                 {
                     lines.Add(Colorize(
                         "Attachments " + FormatPriceExternal(attachmentsPrice),
-                        PluginConfig.ContentsPriceColor.Value));
+                        PluginConfig.AttachmentsPriceColor.Value));
 
                     lines.Add(Colorize(
                         "Total " + FormatPriceExternal(totalPrice),
@@ -1062,40 +1169,51 @@ namespace AvgSellPrice
                     ? rigOffer.Name
                     : traderName;
 
-                if (basePrice > 0)
-                {
-                    lines.Add(Colorize(
-                        FormatMainPriceWithOptionalTrader(rigTraderName, basePrice),
-                        PluginConfig.MainPriceColor.Value));
-                }
-
                 if (ShouldHideContentsForUnsearchedItem(item))
                 {
+                    if (basePrice > 0)
+                    {
+                        lines.Add(Colorize(
+                            FormatMainPriceWithOptionalTrader(rigTraderName, basePrice),
+                            PluginConfig.MainPriceColor.Value));
+                    }
+
                     lines.Add(GetUnsearchedHoverLine());
                     return string.Join(Environment.NewLine, lines);
                 }
 
                 int platesPrice = GetArmorPlateTraderPrice(item);
                 int contentsPrice = GetContentsTraderPrice(item);
+                bool showPlates = ShowPlatesBreakdown;
+                bool showContents = ShowContentsBreakdown;
+                int displayBasePrice = basePrice + (showPlates ? 0 : platesPrice);
+                int visibleContentsPrice = showContents ? contentsPrice : 0;
 
-                if (platesPrice > 0)
+                if (displayBasePrice > 0)
+                {
+                    lines.Add(Colorize(
+                        FormatMainPriceWithOptionalTrader(rigTraderName, displayBasePrice),
+                        PluginConfig.MainPriceColor.Value));
+                }
+
+                if (showPlates && platesPrice > 0)
                 {
                     lines.Add(Colorize(
                         "Plates " + FormatPriceExternal(platesPrice),
                         PluginConfig.PlatesPriceColor.Value));
                 }
 
-                if (contentsPrice > 0)
+                if (showContents && contentsPrice > 0)
                 {
                     lines.Add(Colorize(
                         "Contents " + FormatContentsPriceVisual(contentsPrice),
                         PluginConfig.ContentsPriceColor.Value));
                 }
 
-                if (platesPrice > 0 || contentsPrice > 0)
+                if (showPlates && platesPrice > 0 || showContents && contentsPrice > 0)
                 {
                     lines.Add(Colorize(
-                        "Total " + FormatPriceExternal(basePrice + platesPrice + contentsPrice),
+                        "Total " + FormatPriceExternal(displayBasePrice + (showPlates ? platesPrice : 0) + visibleContentsPrice),
                         PluginConfig.TotalPriceColor.Value));
                 }
 
@@ -1125,6 +1243,11 @@ namespace AvgSellPrice
                 if (ShouldHideContentsForUnsearchedItem(item))
                 {
                     lines.Add(GetUnsearchedHoverLine());
+                    return string.Join(Environment.NewLine, lines);
+                }
+
+                if (!ShowContentsBreakdown)
+                {
                     return string.Join(Environment.NewLine, lines);
                 }
 
@@ -1162,7 +1285,7 @@ namespace AvgSellPrice
                 return null;
             }
 
-            return new TraderOffer("Flea Market", fleaPrice, "RUB", 1d);
+            return new TraderOffer("Flea", fleaPrice, "RUB", 1d);
         }
 
         private static bool HasChildren(Item item)
@@ -1339,6 +1462,11 @@ namespace AvgSellPrice
                 return basePrice + contentsPrice;
             }
 
+            if (IsMagazine(item))
+            {
+                return GetMagazineTotalSellPrice(item);
+            }
+
             if (item is Weapon)
             {
                 return GetWeaponTotalSellValue(item);
@@ -1358,24 +1486,36 @@ namespace AvgSellPrice
                 return 0;
             }
 
-            int total = 0;
+            PriceSource? previousPriceSource = _priceSourceOverride;
+            _priceSourceOverride = PluginConfig.EquipmentValuePriceSource != null
+                ? PluginConfig.EquipmentValuePriceSource.Value
+                : GetActivePriceSource();
 
-            foreach (Item item in GetEquippedRootItems())
+            try
             {
-                if (item == null)
+                int total = 0;
+
+                foreach (Item item in GetEquippedRootItems())
                 {
-                    continue;
+                    if (item == null)
+                    {
+                        continue;
+                    }
+
+                    if (ShouldSkipEquipmentValueItem(item))
+                    {
+                        continue;
+                    }
+
+                    total += GetEquipmentValueItemPrice(item);
                 }
 
-                if (ShouldSkipEquipmentValueItem(item))
-                {
-                    continue;
-                }
-
-                total += GetEquipmentValueItemPrice(item);
+                return total;
             }
-
-            return total;
+            finally
+            {
+                _priceSourceOverride = previousPriceSource;
+            }
         }
 
         internal static string FormatMoneyUi(int value)
@@ -1484,6 +1624,11 @@ namespace AvgSellPrice
                 return basePrice + contentsPrice;
             }
 
+            if (IsMagazine(item))
+            {
+                return GetMagazineTotalSellPrice(item);
+            }
+
             if (item is Weapon)
             {
                 return GetWeaponTotalSellValue(item);
@@ -1533,6 +1678,11 @@ namespace AvgSellPrice
             if (IsRealContainer(item) || IsArmoredRig(item))
             {
                 return GetEquipmentValueItemPrice(item);
+            }
+
+            if (IsMagazine(item))
+            {
+                return GetMagazineTotalSellPrice(item);
             }
 
             if (ShouldUseModAttachmentBreakdown(item))
@@ -2163,7 +2313,7 @@ namespace AvgSellPrice
                 return;
             }
 
-            CachedBasePricesByTemplateId[templateId] = price;
+            CachedBasePricesByTemplateAndSource[GetPriceCacheKey(templateId)] = price;
         }
 
         private static int GetCachedBasePrice(Item item)
@@ -2181,12 +2331,17 @@ namespace AvgSellPrice
             }
 
             int value;
-            if (CachedBasePricesByTemplateId.TryGetValue(templateId, out value))
+            if (CachedBasePricesByTemplateAndSource.TryGetValue(GetPriceCacheKey(templateId), out value))
             {
                 return value;
             }
 
             return 0;
+        }
+
+        private static string GetPriceCacheKey(string templateId)
+        {
+            return GetActivePriceSource() + ":" + templateId;
         }
 
         private static int GetVerifiedContainerBasePrice(Item item)
@@ -2207,7 +2362,7 @@ namespace AvgSellPrice
 
             if (price > 0)
             {
-                Plugin.Log?.LogInfo($"[AvgSellPrice] VERIFIED CACHE HIT {item.ShortName} ({templateId}) => {price}");
+                Plugin.LogDebug($"[AvgSellPrice] VERIFIED CACHE HIT {item.ShortName} ({templateId}) => {price}");
             }
 
             return price;
@@ -2232,7 +2387,7 @@ namespace AvgSellPrice
                 return;
             }
 
-            Plugin.Log?.LogInfo($"[AvgSellPrice] VERIFIED PRICE from {source} {item.ShortName} ({templateId}) => {price}");
+            Plugin.LogDebug($"[AvgSellPrice] VERIFIED PRICE from {source} {item.ShortName} ({templateId}) => {price}");
             VerifiedContainerPriceCache.StoreVerifiedPrice(templateId, price);
         }
 
@@ -2563,7 +2718,29 @@ namespace AvgSellPrice
 
             foreach (Item child in magazineRoots)
             {
-                total += GetSingleItemTotalSellPrice(child);
+                total += GetMagazineTotalSellPrice(child);
+            }
+
+            return total;
+        }
+
+        private static int GetMagazineTotalSellPrice(Item item)
+        {
+            if (item == null)
+            {
+                return 0;
+            }
+
+            TraderOffer totalOffer = GetConfiguredTraderOffer(item);
+            if (!UseFleaPriceSource && totalOffer != null && totalOffer.Price > 0)
+            {
+                return totalOffer.Price;
+            }
+
+            int total = GetSingleItemTotalSellPrice(item);
+            if (ShowAmmoPrice)
+            {
+                total += GetLoadedAmmoTraderPrice(item);
             }
 
             return total;
@@ -2591,7 +2768,7 @@ namespace AvgSellPrice
             }
             catch (Exception ex)
             {
-                Plugin.Log?.LogWarning($"[AvgSellPrice] Weapon base trader query failed for {item.ShortName}: {ex.Message}");
+                Plugin.LogDebug($"[AvgSellPrice] Weapon base trader query failed for {item.ShortName}: {ex.Message}");
                 return null;
             }
         }
@@ -2827,7 +3004,7 @@ namespace AvgSellPrice
                 int fleaPrice = GetFleaTemplatePrice(item);
                 if (fleaPrice > 0)
                 {
-                    Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG base from flea price {item.ShortName}: {fleaPrice}");
+                    Plugin.LogDebug($"[AvgSellPrice] ARMORED RIG base from flea price {item.ShortName}: {fleaPrice}");
                     return fleaPrice;
                 }
             }
@@ -2842,7 +3019,7 @@ namespace AvgSellPrice
                     VerifiedArmoredRigPriceCache.StorePrice(templateId, liveOfferPrice);
                 }
 
-                Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG base from live offer {item.ShortName}: {liveOfferPrice}");
+                Plugin.LogDebug($"[AvgSellPrice] ARMORED RIG base from live offer {item.ShortName}: {liveOfferPrice}");
                 return liveOfferPrice;
             }
 
@@ -2854,7 +3031,7 @@ namespace AvgSellPrice
                     VerifiedArmoredRigPriceCache.StorePrice(templateId, donorPrice);
                 }
 
-                Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG base from empty donor {item.ShortName}: {donorPrice}");
+                Plugin.LogDebug($"[AvgSellPrice] ARMORED RIG base from empty donor {item.ShortName}: {donorPrice}");
                 return donorPrice;
             }
 
@@ -2863,7 +3040,7 @@ namespace AvgSellPrice
                 int verifiedRigPrice = VerifiedArmoredRigPriceCache.GetPrice(templateId);
                 if (IsPlausibleArmoredRigBasePrice(item, verifiedRigPrice))
                 {
-                    Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG base from verified cache {item.ShortName}: {verifiedRigPrice}");
+                    Plugin.LogDebug($"[AvgSellPrice] ARMORED RIG base from verified cache {item.ShortName}: {verifiedRigPrice}");
                     return verifiedRigPrice;
                 }
             }
@@ -2873,7 +3050,7 @@ namespace AvgSellPrice
                 int serverPrice = TraderPriceCache.GetPrice(templateId);
                 if (serverPrice > 0)
                 {
-                    Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG base from server price {item.ShortName}: {serverPrice}");
+                    Plugin.LogDebug($"[AvgSellPrice] ARMORED RIG base from server price {item.ShortName}: {serverPrice}");
                     return serverPrice;
                 }
             }
@@ -2881,7 +3058,7 @@ namespace AvgSellPrice
             int fallback = GetTemplateFallbackPrice(item);
             if (fallback > 0)
             {
-                Plugin.Log?.LogInfo($"[AvgSellPrice] ARMORED RIG base from handbook fallback {item.ShortName}: {fallback}");
+                Plugin.LogDebug($"[AvgSellPrice] ARMORED RIG base from handbook fallback {item.ShortName}: {fallback}");
                 return fallback;
             }
 
@@ -2907,7 +3084,7 @@ namespace AvgSellPrice
                 return liveOffer;
             }
 
-            Plugin.Log?.LogWarning($"[AvgSellPrice] ARMORED RIG has no trader price: {item.ShortName}");
+            Plugin.LogDebug($"[AvgSellPrice] ARMORED RIG has no trader price: {item.ShortName}");
             return null;
         }
 
@@ -2998,7 +3175,7 @@ namespace AvgSellPrice
                     TraderOffer queryOffer = GetConfiguredTraderOfferFromQueryItem(queryItem, item);
                     if (queryOffer != null && queryOffer.Price > 0)
                     {
-                        Plugin.Log?.LogInfo($"[AvgSellPrice] CONTAINER preserved-id query price {item.ShortName}: {queryOffer.Price} via {queryOffer.Name}");
+                        Plugin.LogDebug($"[AvgSellPrice] CONTAINER preserved-id query price {item.ShortName}: {queryOffer.Price} via {queryOffer.Name}");
                         return queryOffer;
                     }
 
@@ -3010,7 +3187,7 @@ namespace AvgSellPrice
                     queryOffer = GetConfiguredTraderOfferFromQueryItem(queryItem, item);
                     if (queryOffer != null && queryOffer.Price > 0)
                     {
-                        Plugin.Log?.LogInfo($"[AvgSellPrice] CONTAINER stripped query price {item.ShortName}: {queryOffer.Price} via {queryOffer.Name}");
+                        Plugin.LogDebug($"[AvgSellPrice] CONTAINER stripped query price {item.ShortName}: {queryOffer.Price} via {queryOffer.Name}");
                         return queryOffer;
                     }
                 }
@@ -3023,13 +3200,13 @@ namespace AvgSellPrice
                 TraderOffer offer = GetConfiguredTraderOffer(item);
                 if (offer != null && offer.Price > 0)
                 {
-                    Plugin.Log?.LogInfo($"[AvgSellPrice] CONTAINER fallback price {item.ShortName}: {offer.Price} via {offer.Name}");
+                    Plugin.LogDebug($"[AvgSellPrice] CONTAINER fallback price {item.ShortName}: {offer.Price} via {offer.Name}");
                     return offer;
                 }
             }
             catch (Exception ex)
             {
-                Plugin.Log?.LogWarning($"[AvgSellPrice] Container query failed for {item.ShortName}: {ex.Message}");
+                Plugin.LogDebug($"[AvgSellPrice] Container query failed for {item.ShortName}: {ex.Message}");
             }
 
             return null;
@@ -3152,7 +3329,7 @@ namespace AvgSellPrice
 
             int fallbackSellPrice = (int)Math.Floor(rawPrice * 0.6);
 
-            Plugin.Log?.LogInfo(
+            Plugin.LogDebug(
                 $"[AvgSellPrice] SERVER FALLBACK {item.ShortName} ({templateId}) raw={rawPrice} fallback60={fallbackSellPrice}");
 
             return fallbackSellPrice;
@@ -3167,7 +3344,7 @@ namespace AvgSellPrice
 
             if (IsArmoredRig(item))
             {
-                Plugin.Log?.LogInfo($"[AvgSellPrice] Skipping container base logic for armored rig {item.ShortName}");
+                Plugin.LogDebug($"[AvgSellPrice] Skipping container base logic for armored rig {item.ShortName}");
                 return 0;
             }
 
@@ -3176,7 +3353,7 @@ namespace AvgSellPrice
                 int fleaPrice = GetFleaTemplatePrice(item);
                 if (fleaPrice > 0)
                 {
-                    Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from flea price {item.ShortName}: {fleaPrice}");
+                    Plugin.LogDebug($"[AvgSellPrice] BASE from flea price {item.ShortName}: {fleaPrice}");
                     return fleaPrice;
                 }
             }
@@ -3192,7 +3369,7 @@ namespace AvgSellPrice
             int emptyClonePrice = GetEmptyCloneContainerPrice(item);
             if (emptyClonePrice > 0)
             {
-                Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from empty clone {item.ShortName}: {emptyClonePrice}");
+                Plugin.LogDebug($"[AvgSellPrice] BASE from empty clone {item.ShortName}: {emptyClonePrice}");
                 CacheBasePrice(item, emptyClonePrice);
                 StoreVerifiedContainerBasePrice(item, emptyClonePrice, "empty clone");
                 return emptyClonePrice;
@@ -3201,7 +3378,7 @@ namespace AvgSellPrice
             int donorPrice = TryGetBasePriceFromEmptyIdenticalItem(item);
             if (donorPrice > 0)
             {
-                Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from donor {item.ShortName}: {donorPrice}");
+                Plugin.LogDebug($"[AvgSellPrice] BASE from donor {item.ShortName}: {donorPrice}");
                 CacheBasePrice(item, donorPrice);
                 StoreVerifiedContainerBasePrice(item, donorPrice, "donor");
                 return donorPrice;
@@ -3210,14 +3387,14 @@ namespace AvgSellPrice
             int serverPrice = GetServerContainerBasePrice(item);
             if (serverPrice > 0)
             {
-                Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from server fallback {item.ShortName}: {serverPrice}");
+                Plugin.LogDebug($"[AvgSellPrice] BASE from server fallback {item.ShortName}: {serverPrice}");
                 return serverPrice;
             }
 
             int templateFallback = GetTemplateFallbackPrice(item);
             if (templateFallback > 0)
             {
-                Plugin.Log?.LogInfo($"[AvgSellPrice] BASE from handbook fallback {item.ShortName}: {templateFallback}");
+                Plugin.LogDebug($"[AvgSellPrice] BASE from handbook fallback {item.ShortName}: {templateFallback}");
                 return templateFallback;
             }
 
@@ -3238,7 +3415,7 @@ namespace AvgSellPrice
 
             if (!Session.Profile.Examined(item))
             {
-                Plugin.Log?.LogWarning($"[AvgSellPrice] EMPTY CLONE SKIPPED, NOT EXAMINED: {item.ShortName} ({GetTemplateIdSafe(item)})");
+                Plugin.LogDebug($"[AvgSellPrice] EMPTY CLONE SKIPPED, NOT EXAMINED: {item.ShortName} ({GetTemplateIdSafe(item)})");
                 return 0;
             }
 
@@ -3252,7 +3429,7 @@ namespace AvgSellPrice
                     {
                         var p = t.GetUserItemPrice(queryItem);
                         var supply = t.GetSupplyDataSafe();
-                        Plugin.Log?.LogInfo($"[AvgSellPrice] CLONE {item.ShortName} @ {t.LocalizedName}: price={p?.Amount.ToString() ?? "NULL"} supply={supply != null} courses={supply?.CurrencyCourses != null}");
+                        Plugin.LogDebug($"[AvgSellPrice] CLONE {item.ShortName} @ {t.LocalizedName}: price={p?.Amount.ToString() ?? "NULL"} supply={supply != null} courses={supply?.CurrencyCourses != null}");
                     }
                 }
 
@@ -3260,7 +3437,7 @@ namespace AvgSellPrice
             }
             catch (Exception ex)
             {
-                Plugin.Log?.LogWarning($"[AvgSellPrice] Empty clone pricing failed for {item.ShortName}: {ex.Message}");
+                Plugin.LogDebug($"[AvgSellPrice] Empty clone pricing failed for {item.ShortName}: {ex.Message}");
                 return 0;
             }
         }
@@ -3406,6 +3583,11 @@ namespace AvgSellPrice
                 return GetDisplayMainPrice(item);
             }
 
+            if (IsMagazine(item))
+            {
+                return GetMagazineTotalSellPrice(item);
+            }
+
             if (ShouldUseModAttachmentBreakdown(item))
             {
                 return GetModAttachmentRootTotalSellValue(item);
@@ -3523,7 +3705,7 @@ namespace AvgSellPrice
 
             if (examinedSource != null && !Session.Profile.Examined(examinedSource))
             {
-                Plugin.Log?.LogWarning($"[AvgSellPrice] NOT EXAMINED: {examinedSource.ShortName} ({GetTemplateIdSafe(examinedSource)})");
+                Plugin.LogDebug($"[AvgSellPrice] NOT EXAMINED: {examinedSource.ShortName} ({GetTemplateIdSafe(examinedSource)})");
                 return new List<TraderOffer>();
             }
 
@@ -3666,7 +3848,7 @@ namespace AvgSellPrice
 
             if (!Session.Profile.Examined(item))
             {
-                Plugin.Log?.LogWarning($"[AvgSellPrice] NOT EXAMINED: {item.ShortName} ({GetTemplateIdSafe(item)})");
+                Plugin.LogDebug($"[AvgSellPrice] NOT EXAMINED: {item.ShortName} ({GetTemplateIdSafe(item)})");
                 return new List<TraderOffer>();
             }
 
@@ -3695,14 +3877,14 @@ namespace AvgSellPrice
                     List<TraderOffer> fallbackOffers = GetTraderOffersForQueryItem(fallbackQueryItem, item).ToList();
                     if (fallbackOffers.Count > 0)
                     {
-                        Plugin.Log?.LogInfo($"[AvgSellPrice] Container fallback without original id worked for {item.ShortName}");
+                        Plugin.LogDebug($"[AvgSellPrice] Container fallback without original id worked for {item.ShortName}");
                         return fallbackOffers;
                     }
                 }
             }
             catch (Exception ex)
             {
-                Plugin.Log?.LogWarning($"[AvgSellPrice] Trader query clone failed for {item.ShortName}: {ex.Message}");
+                Plugin.LogDebug($"[AvgSellPrice] Trader query clone failed for {item.ShortName}: {ex.Message}");
             }
 
             return GetTraderOffersForQueryItem(item, item);
@@ -3872,7 +4054,7 @@ namespace AvgSellPrice
 
         public static void ClearPriceCacheSafe()
         {
-            CachedBasePricesByTemplateId.Clear();
+            CachedBasePricesByTemplateAndSource.Clear();
         }
 
         public static bool TryPrecacheContainerPrice(Item item)

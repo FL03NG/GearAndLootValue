@@ -214,6 +214,7 @@ namespace AvgSellPrice
         private static bool ShouldTrackRaidLoot()
         {
             return IsInRaid &&
+                   (PluginConfig.EnableValueDisplay == null || PluginConfig.EnableValueDisplay.Value) &&
                    (PluginConfig.ShowRaidLootValue == null || PluginConfig.ShowRaidLootValue.Value);
         }
 

@@ -3,6 +3,8 @@ using EFT.UI;
 using EFT.UI.SessionEnd;
 using HarmonyLib;
 using SPT.Reflection.Patching;
+using System;
+using System.Linq;
 using System.Reflection;
 
 namespace AvgSellPrice
@@ -52,20 +54,27 @@ namespace AvgSellPrice
         [PatchPostfix]
         private static void PatchPostfix(object __instance, GEventArgs1 eventArgs)
         {
-            if (!ValueTracker.IsInRaid)
+            try
             {
-                ValueDisplayUI.RequestEquipmentValueRefresh(0.1f);
-                return;
-            }
+                if (!ValueTracker.IsInRaid)
+                {
+                    ValueDisplayUI.RequestEquipmentValueRefreshDebounced();
+                    return;
+                }
 
-            if (!ReferenceEquals(__instance, RaidPlayerState.MainPlayer))
+                if (!ReferenceEquals(__instance, RaidPlayerState.MainPlayer))
+                {
+                    return;
+                }
+
+                ValueTracker.HandleItemAdded(eventArgs?.Item);
+                ValueDisplayUI.RequestRaidItemReconcile(eventArgs?.Item);
+                ValueDisplayUI.RequestRaidValueTextRefresh();
+            }
+            catch (Exception ex)
             {
-                return;
+                Plugin.Log?.LogError($"[AvgSellPrice] PlayerItemAddedPatch failed: {ex}");
             }
-
-            ValueTracker.HandleItemAdded(eventArgs?.Item);
-            ValueDisplayUI.RequestRaidItemReconcile(eventArgs?.Item);
-            ValueDisplayUI.RequestRaidValueTextRefresh();
         }
     }
 
@@ -79,20 +88,27 @@ namespace AvgSellPrice
         [PatchPostfix]
         private static void PatchPostfix(object __instance, GEventArgs3 eventArgs)
         {
-            if (!ValueTracker.IsInRaid)
+            try
             {
-                ValueDisplayUI.RequestEquipmentValueRefresh(0.1f);
-                return;
-            }
+                if (!ValueTracker.IsInRaid)
+                {
+                    ValueDisplayUI.RequestEquipmentValueRefreshDebounced();
+                    return;
+                }
 
-            if (!ReferenceEquals(__instance, RaidPlayerState.MainPlayer))
+                if (!ReferenceEquals(__instance, RaidPlayerState.MainPlayer))
+                {
+                    return;
+                }
+
+                ValueTracker.HandleItemRemoved(eventArgs?.Item);
+                ValueDisplayUI.RequestRaidItemReconcile(eventArgs?.Item);
+                ValueDisplayUI.RequestRaidValueTextRefresh();
+            }
+            catch (Exception ex)
             {
-                return;
+                Plugin.Log?.LogError($"[AvgSellPrice] PlayerItemRemovedPatch failed: {ex}");
             }
-
-            ValueTracker.HandleItemRemoved(eventArgs?.Item);
-            ValueDisplayUI.RequestRaidItemReconcile(eventArgs?.Item);
-            ValueDisplayUI.RequestRaidValueTextRefresh();
         }
     }
 
@@ -131,7 +147,120 @@ namespace AvgSellPrice
             RaidPlayerState.MainPlayer = null;
             ValueTracker.EndRaid();
             ValueDisplayUI.RequestRefresh();
+        }
+    }
+
+    internal class RaidEndSummaryShowPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod()
+        {
+            return typeof(SessionResultExitStatus)
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .FirstOrDefault(method =>
+                    method.Name == "Show" &&
+                    method.GetParameters().Length == 1);
+        }
+
+        [PatchPostfix]
+        private static void PatchPostfix()
+        {
             ValueDisplayUI.ShowRaidEndLootValue();
+        }
+    }
+
+    internal class RaidEndExperienceShowPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod()
+        {
+            return typeof(SessionResultExperienceCount)
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .FirstOrDefault(method => method.Name == "Show");
+        }
+
+        [PatchPostfix]
+        private static void PatchPostfix()
+        {
+            ValueDisplayUI.HideRaidEndLootValueNow();
+        }
+    }
+
+    internal class RaidEndKillListShowPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod()
+        {
+            return typeof(SessionResultKillList)
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .FirstOrDefault(method => method.Name == "Show");
+        }
+
+        [PatchPostfix]
+        private static void PatchPostfix()
+        {
+            ValueDisplayUI.HideRaidEndLootValueNow();
+        }
+    }
+
+    internal class RaidEndStatisticsShowPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod()
+        {
+            return typeof(SessionResultStatistics)
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .FirstOrDefault(method => method.Name == "Show");
+        }
+
+        [PatchPostfix]
+        private static void PatchPostfix()
+        {
+            ValueDisplayUI.HideRaidEndLootValueNow();
+        }
+    }
+
+    internal class RaidEndHealthTreatmentShowPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod()
+        {
+            return typeof(HealthTreatmentScreen)
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .FirstOrDefault(method => method.Name == "Show");
+        }
+
+        [PatchPostfix]
+        private static void PatchPostfix()
+        {
+            ValueDisplayUI.HideRaidEndLootValueNow();
+        }
+    }
+
+    internal class MatchmakerInsuranceScreenShowPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod()
+        {
+            return AccessTools.Method(
+                AccessTools.TypeByName("EFT.UI.Matchmaker.MatchmakerInsuranceScreen"),
+                "Show");
+        }
+
+        [PatchPrefix]
+        private static void PatchPrefix()
+        {
+            ValueDisplayUI.SetEquipmentValueBlocked(true);
+        }
+    }
+
+    internal class MatchmakerInsuranceScreenClosePatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod()
+        {
+            return AccessTools.Method(
+                AccessTools.TypeByName("EFT.UI.Matchmaker.MatchmakerInsuranceScreen"),
+                "Close");
+        }
+
+        [PatchPostfix]
+        private static void PatchPostfix()
+        {
+            ValueDisplayUI.SetEquipmentValueBlocked(false);
         }
     }
 
@@ -162,7 +291,25 @@ namespace AvgSellPrice
         [PatchPostfix]
         private static void PatchPostfix()
         {
-            ValueDisplayUI.SetInventoryVisible(true);
+            ValueDisplayUI.ShowEquipmentValueForInventory();
+        }
+    }
+
+    internal class InventoryScreenShowPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod()
+        {
+            return typeof(InventoryScreen)
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .FirstOrDefault(method =>
+                    method.Name == "Show" &&
+                    method.GetParameters().Length == 1);
+        }
+
+        [PatchPostfix]
+        private static void PatchPostfix()
+        {
+            ValueDisplayUI.ShowEquipmentValueForInventory();
         }
     }
 

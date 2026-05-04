@@ -40,7 +40,7 @@ namespace AvgSellPrice
             {
                 if (!File.Exists(FilePath))
                 {
-                    Plugin.Log?.LogInfo("[AvgSellPrice] No verified container cache file found yet");
+                    Plugin.LogDebug("[AvgSellPrice] No verified container cache file found yet");
                     return;
                 }
 
@@ -70,7 +70,7 @@ namespace AvgSellPrice
                     }
                 }
 
-                Plugin.Log?.LogInfo($"[AvgSellPrice] Loaded {Prices.Count} verified container prices");
+                Plugin.LogDebug($"[AvgSellPrice] Loaded {Prices.Count} verified container prices");
             }
             catch (Exception ex)
             {
@@ -105,7 +105,7 @@ namespace AvgSellPrice
             Prices[templateId] = price;
             _dirty = true;
 
-            Plugin.Log?.LogInfo($"[AvgSellPrice] VERIFIED PRICE STORED {templateId} => {price}");
+            Plugin.LogDebug($"[AvgSellPrice] VERIFIED PRICE STORED {templateId} => {price}");
 
             Save();
         }
@@ -123,7 +123,7 @@ namespace AvgSellPrice
                 File.WriteAllText(FilePath, json);
                 _dirty = false;
 
-                Plugin.Log?.LogInfo($"[AvgSellPrice] Saved verified container cache to {FilePath}");
+                Plugin.LogDebug($"[AvgSellPrice] Saved verified container cache to {FilePath}");
             }
             catch (Exception ex)
             {
