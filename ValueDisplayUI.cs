@@ -17,6 +17,9 @@ namespace AvgSellPrice
         private const string RaidEndLabelObjectName = "AvgSellPriceRaidEndLootValue";
         private const string EquipmentOverlayCanvasObjectName = "AvgSellPriceEquipmentValueCanvas";
         private const float TraderUiScanInterval = 2.5f;
+        private const float ValueChangeAnimationDuration = 0.3f;
+        private const float RaidEndCountAnimationDuration = 0.95f;
+        private const float RaidEndIntroAnimationDuration = 0.18f;
         private const int MaxRaidLabelCreateAttempts = 6;
 
         private static readonly Regex EquipmentWeightRegex =
@@ -67,6 +70,16 @@ namespace AvgSellPrice
         private bool _raidLootRebuildPending;
         private float _nextRaidLootRebuildTime;
         private float _nextEquipmentShowTime;
+        private ValueAnimation _equipmentValueAnimation;
+        private ValueAnimation _raidValueAnimation;
+        private ValueAnimation _raidEndValueAnimation;
+        private bool _equipmentValueAnimationReady;
+        private bool _raidValueAnimationReady;
+        private CanvasGroup _raidEndCanvasGroup;
+        private float _raidEndIntroStartTime;
+        private bool _raidEndIntroActive;
+        private bool _raidEndRewardVisible;
+        private int _raidEndRewardTargetValue = -1;
 
         private void Awake()
         {
@@ -93,6 +106,8 @@ namespace AvgSellPrice
 
         private void Update()
         {
+            ProcessValueAnimations();
+
             if (_pendingRefresh)
             {
                 _pendingRefresh = false;
@@ -338,6 +353,7 @@ namespace AvgSellPrice
 
             if (!ValueTracker.IsInRaid || !visible)
             {
+                Instance._raidValueAnimation.Active = false;
                 if (Instance._raidOverlayCanvas != null && Instance._raidOverlayCanvas.gameObject != null)
                 {
                     Instance._raidOverlayCanvas.SetActive(false);
@@ -363,6 +379,7 @@ namespace AvgSellPrice
                 _equipmentHidePending = false;
                 _equipmentShowPending = false;
                 _equipmentLabelRefreshPending = false;
+                _equipmentValueAnimation.Active = false;
                 _nextEquipmentVisibleProbeTime = 0f;
                 if (_equipmentOverlayCanvas != null && _equipmentOverlayCanvas.gameObject != null)
                 {
@@ -475,8 +492,7 @@ namespace AvgSellPrice
             }
 
             int value = GetCachedEquipmentValue();
-            _equipmentLabel.text = $"Equipment Value: <b>{ItemExtensions.FormatMoneyUi(value)} ₽</b>";
-            _equipmentLabel.color = new Color(0.92f, 0.92f, 0.93f, 1f);
+            StartEquipmentValueAnimation(value);
             _equipmentBox.SetActive(true);
             if (IsEquipmentBoxOnOverlayCanvas())
             {
@@ -519,8 +535,7 @@ namespace AvgSellPrice
             }
 
             int value = GetCachedEquipmentValue();
-            _equipmentLabel.text = $"Equipment Value: <b>{ItemExtensions.FormatMoneyUi(value)} ₽</b>";
-            _equipmentLabel.color = new Color(0.92f, 0.92f, 0.93f, 1f);
+            StartEquipmentValueAnimation(value);
             _equipmentBox.SetActive(true);
             if (IsEquipmentBoxOnOverlayCanvas())
             {
@@ -542,8 +557,7 @@ namespace AvgSellPrice
             _raidLabel = EnsureRaidOverlayLabel();
 
             int value = ValueTracker.CurrentRaidLootValue;
-            _raidLabel.text = $"Loot Value: <b>{ItemExtensions.FormatMoneyUi(value)} ₽</b>";
-            _raidLabel.color = GetRaidValueColor(value);
+            StartRaidValueAnimation(value);
             _raidBox.SetActive(true);
         }
 
@@ -563,8 +577,7 @@ namespace AvgSellPrice
             }
 
             int value = ValueTracker.CurrentRaidLootValue;
-            _raidLabel.text = $"Loot Value: <b>{ItemExtensions.FormatMoneyUi(value)} ₽</b>";
-            _raidLabel.color = GetRaidValueColor(value);
+            StartRaidValueAnimation(value);
 
             Transform root = _raidLabel.transform.parent;
         }
@@ -585,8 +598,7 @@ namespace AvgSellPrice
                 return;
             }
 
-            _raidEndLabel.text = $"Raid Loot: <b>{ItemExtensions.FormatMoneyUi(value)} ₽</b>";
-            _raidEndLabel.color = Color.red;
+            StartRaidEndRewardAnimation(value);
             _raidEndBox.SetActive(true);
 
             if (_raidEndOverlayCanvas != null && _raidEndOverlayCanvas.gameObject != null)
@@ -597,11 +609,203 @@ namespace AvgSellPrice
 
         private void HideRaidEndLootValue()
         {
+            _raidEndValueAnimation.Active = false;
+            _raidEndIntroActive = false;
+            _raidEndRewardVisible = false;
             HideLabel(_raidEndLabel);
             if (_raidEndOverlayCanvas != null && _raidEndOverlayCanvas.gameObject != null)
             {
                 _raidEndOverlayCanvas.SetActive(false);
             }
+        }
+
+        private void StartEquipmentValueAnimation(int targetValue)
+        {
+            if (!_equipmentValueAnimationReady)
+            {
+                _equipmentValueAnimationReady = true;
+                _equipmentValueAnimation = ValueAnimation.Completed(targetValue);
+                ApplyEquipmentValueText(targetValue);
+                return;
+            }
+
+            StartValueAnimation(ref _equipmentValueAnimation, targetValue, ValueChangeAnimationDuration);
+            ApplyEquipmentValueText(_equipmentValueAnimation.DisplayValue);
+        }
+
+        private void StartRaidValueAnimation(int targetValue)
+        {
+            if (!_raidValueAnimationReady)
+            {
+                _raidValueAnimationReady = true;
+                _raidValueAnimation = ValueAnimation.Completed(targetValue);
+                ApplyRaidValueText(targetValue);
+                return;
+            }
+
+            StartValueAnimation(ref _raidValueAnimation, targetValue, ValueChangeAnimationDuration);
+            ApplyRaidValueText(_raidValueAnimation.DisplayValue);
+        }
+
+        private void StartRaidEndRewardAnimation(int targetValue)
+        {
+            if (_raidEndRewardVisible && _raidEndRewardTargetValue == targetValue)
+            {
+                ApplyRaidEndValueText(_raidEndValueAnimation.Active
+                    ? _raidEndValueAnimation.DisplayValue
+                    : targetValue);
+                return;
+            }
+
+            _raidEndRewardVisible = true;
+            _raidEndRewardTargetValue = targetValue;
+            _raidEndValueAnimation = new ValueAnimation
+            {
+                Active = targetValue > 0,
+                StartValue = 0,
+                TargetValue = targetValue,
+                DisplayValue = 0,
+                StartTime = Time.unscaledTime,
+                Duration = RaidEndCountAnimationDuration
+            };
+
+            _raidEndIntroStartTime = Time.unscaledTime;
+            _raidEndIntroActive = true;
+
+            if (_raidEndCanvasGroup != null)
+            {
+                _raidEndCanvasGroup.alpha = 0f;
+            }
+
+            if (_raidEndBox != null)
+            {
+                _raidEndBox.transform.localScale = Vector3.one * 0.96f;
+            }
+
+            ApplyRaidEndValueText(0);
+        }
+
+        private static void StartValueAnimation(ref ValueAnimation animation, int targetValue, float duration)
+        {
+            if (animation.TargetValue == targetValue && animation.Active)
+            {
+                return;
+            }
+
+            if (animation.TargetValue == targetValue && !animation.Active)
+            {
+                animation.DisplayValue = targetValue;
+                return;
+            }
+
+            animation.StartValue = animation.DisplayValue;
+            animation.TargetValue = targetValue;
+            animation.StartTime = Time.unscaledTime;
+            animation.Duration = duration;
+            animation.Active = true;
+        }
+
+        private void ProcessValueAnimations()
+        {
+            if (_equipmentValueAnimation.Active)
+            {
+                UpdateValueAnimation(ref _equipmentValueAnimation, EaseOutCubic);
+                ApplyEquipmentValueText(_equipmentValueAnimation.DisplayValue);
+            }
+
+            if (_raidValueAnimation.Active)
+            {
+                UpdateValueAnimation(ref _raidValueAnimation, EaseOutCubic);
+                ApplyRaidValueText(_raidValueAnimation.DisplayValue);
+            }
+
+            if (_raidEndValueAnimation.Active)
+            {
+                UpdateValueAnimation(ref _raidEndValueAnimation, EaseOutCubic);
+                ApplyRaidEndValueText(_raidEndValueAnimation.DisplayValue);
+            }
+
+            ProcessRaidEndIntroAnimation();
+        }
+
+        private static void UpdateValueAnimation(ref ValueAnimation animation, Func<float, float> easing)
+        {
+            float duration = Mathf.Max(0.01f, animation.Duration);
+            float t = Mathf.Clamp01((Time.unscaledTime - animation.StartTime) / duration);
+            float eased = easing(t);
+            animation.DisplayValue = Mathf.RoundToInt(Mathf.Lerp(animation.StartValue, animation.TargetValue, eased));
+
+            if (t >= 1f)
+            {
+                animation.DisplayValue = animation.TargetValue;
+                animation.Active = false;
+            }
+        }
+
+        private void ProcessRaidEndIntroAnimation()
+        {
+            if (!_raidEndIntroActive)
+            {
+                return;
+            }
+
+            float t = Mathf.Clamp01((Time.unscaledTime - _raidEndIntroStartTime) / RaidEndIntroAnimationDuration);
+            float eased = EaseOutCubic(t);
+
+            if (_raidEndCanvasGroup != null)
+            {
+                _raidEndCanvasGroup.alpha = eased;
+            }
+
+            if (_raidEndBox != null && _raidEndBox.gameObject != null)
+            {
+                _raidEndBox.transform.localScale = Vector3.one * Mathf.Lerp(0.96f, 1f, eased);
+            }
+
+            if (t >= 1f)
+            {
+                _raidEndIntroActive = false;
+            }
+        }
+
+        private void ApplyEquipmentValueText(int value)
+        {
+            if (_equipmentLabel == null || _equipmentLabel.gameObject == null)
+            {
+                return;
+            }
+
+            _equipmentLabel.text = $"Equipment Value: <b>{ItemExtensions.FormatMoneyUi(value)} ₽</b>";
+            _equipmentLabel.color = new Color(0.92f, 0.92f, 0.93f, 1f);
+        }
+
+        private void ApplyRaidValueText(int value)
+        {
+            if (_raidLabel == null || _raidLabel.gameObject == null)
+            {
+                return;
+            }
+
+            _raidLabel.text = $"Loot Value: <b>{ItemExtensions.FormatMoneyUi(value)} ₽</b>";
+            _raidLabel.color = GetRaidValueColor(value);
+        }
+
+        private void ApplyRaidEndValueText(int value)
+        {
+            if (_raidEndLabel == null || _raidEndLabel.gameObject == null)
+            {
+                return;
+            }
+
+            _raidEndLabel.text = $"Raid Loot: <b>{ItemExtensions.FormatMoneyUi(value)} ₽</b>";
+            _raidEndLabel.color = GetRaidValueColor(value);
+        }
+
+        private static float EaseOutCubic(float t)
+        {
+            t = Mathf.Clamp01(t);
+            float inverse = 1f - t;
+            return 1f - inverse * inverse * inverse;
         }
 
         private void ProcessPendingItemReconciles()
@@ -802,6 +1006,7 @@ namespace AvgSellPrice
             {
                 _raidEndBox = CreateValueBox(_raidEndOverlayCanvas.transform, RaidEndLabelObjectName);
                 _raidEndLabel = _raidEndBox.GetComponentInChildren<TextMeshProUGUI>(true);
+                _raidEndCanvasGroup = _raidEndBox.GetComponent<CanvasGroup>() ?? _raidEndBox.AddComponent<CanvasGroup>();
             }
 
             if (_raidEndBox.transform.parent != _raidEndOverlayCanvas.transform)
@@ -809,6 +1014,7 @@ namespace AvgSellPrice
                 _raidEndBox.transform.SetParent(_raidEndOverlayCanvas.transform, false);
             }
 
+            _raidEndCanvasGroup = _raidEndBox.GetComponent<CanvasGroup>() ?? _raidEndBox.AddComponent<CanvasGroup>();
             ConfigureOverlayBox(_raidEndBox, _raidEndLabel, new Vector2(680f, 195f), 560f, 70f, 38f);
             _raidEndLabel.alignment = TextAlignmentOptions.Midline;
 
@@ -927,6 +1133,14 @@ namespace AvgSellPrice
             _equipmentValueDirty = true;
             _equipmentVisibilityVersion++;
             _cachedEquipmentValue = -1;
+            _equipmentValueAnimationReady = false;
+            _raidValueAnimationReady = false;
+            _equipmentValueAnimation.Active = false;
+            _raidValueAnimation.Active = false;
+            _raidEndValueAnimation.Active = false;
+            _raidEndIntroActive = false;
+            _raidEndRewardVisible = false;
+            _raidEndRewardTargetValue = -1;
             _pendingRefresh = true;
             if (_equipmentOverlayCanvas != null && _equipmentOverlayCanvas.gameObject != null)
             {
@@ -1358,6 +1572,29 @@ namespace AvgSellPrice
                 highColor,
                 maxColor,
                 Mathf.Clamp01(finalT));
+        }
+
+        private struct ValueAnimation
+        {
+            public bool Active;
+            public int StartValue;
+            public int TargetValue;
+            public int DisplayValue;
+            public float StartTime;
+            public float Duration;
+
+            public static ValueAnimation Completed(int value)
+            {
+                return new ValueAnimation
+                {
+                    Active = false,
+                    StartValue = value,
+                    TargetValue = value,
+                    DisplayValue = value,
+                    StartTime = Time.unscaledTime,
+                    Duration = 0f
+                };
+            }
         }
 
     }
