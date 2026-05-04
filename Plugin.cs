@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace AvgSellPrice
 {
-    [BepInPlugin("com.simon.approxsellprice", "Approx Sell Price", "3.6.1")]
+    [BepInPlugin("com.fl03ng.approxsellprice", "Approx Sell Price", "3.6.1")]
     public class Plugin : BaseUnityPlugin
     {
         internal static BepInEx.Logging.ManualLogSource Log;

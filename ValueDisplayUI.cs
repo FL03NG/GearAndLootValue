@@ -205,6 +205,24 @@ namespace AvgSellPrice
             Instance._nextEquipmentLabelRefreshTime = Time.unscaledTime + Mathf.Max(0f, delaySeconds);
         }
 
+        internal static void RequestAllValueRefresh(float delaySeconds = 0f)
+        {
+            if (Instance == null)
+            {
+                return;
+            }
+
+            Instance._equipmentValueDirty = true;
+            Instance._cachedEquipmentValue = -1;
+            Instance._equipmentLabelRefreshPending = true;
+            Instance._nextEquipmentLabelRefreshTime = Time.unscaledTime + Mathf.Max(0f, delaySeconds);
+
+            if (ValueTracker.IsInRaid)
+            {
+                Instance.ScheduleRaidLootRebuild(delaySeconds);
+            }
+        }
+
         internal static void RequestEquipmentVisibleProbe(float delaySeconds = 0f)
         {
             if (Instance == null || ValueTracker.IsInRaid)
@@ -621,6 +639,14 @@ namespace AvgSellPrice
 
         private void StartEquipmentValueAnimation(int targetValue)
         {
+            if (ValueAnimationsDisabled())
+            {
+                _equipmentValueAnimation = ValueAnimation.Completed(targetValue);
+                _equipmentValueAnimationReady = true;
+                ApplyEquipmentValueText(targetValue);
+                return;
+            }
+
             if (!_equipmentValueAnimationReady)
             {
                 _equipmentValueAnimationReady = true;
@@ -635,6 +661,14 @@ namespace AvgSellPrice
 
         private void StartRaidValueAnimation(int targetValue)
         {
+            if (ValueAnimationsDisabled())
+            {
+                _raidValueAnimation = ValueAnimation.Completed(targetValue);
+                _raidValueAnimationReady = true;
+                ApplyRaidValueText(targetValue);
+                return;
+            }
+
             if (!_raidValueAnimationReady)
             {
                 _raidValueAnimationReady = true;
@@ -649,6 +683,27 @@ namespace AvgSellPrice
 
         private void StartRaidEndRewardAnimation(int targetValue)
         {
+            if (ValueAnimationsDisabled())
+            {
+                _raidEndRewardVisible = true;
+                _raidEndRewardTargetValue = targetValue;
+                _raidEndValueAnimation = ValueAnimation.Completed(targetValue);
+                _raidEndIntroActive = false;
+
+                if (_raidEndCanvasGroup != null)
+                {
+                    _raidEndCanvasGroup.alpha = 1f;
+                }
+
+                if (_raidEndBox != null)
+                {
+                    _raidEndBox.transform.localScale = Vector3.one;
+                }
+
+                ApplyRaidEndValueText(targetValue);
+                return;
+            }
+
             if (_raidEndRewardVisible && _raidEndRewardTargetValue == targetValue)
             {
                 ApplyRaidEndValueText(_raidEndValueAnimation.Active
@@ -1225,6 +1280,7 @@ namespace AvgSellPrice
 
                     if (normalized.IndexOf("DEPLOYING TO LOCATION", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         normalized.IndexOf("Equipment preview", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        normalized.IndexOf("MANNEQUIN", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         string.Equals(normalized, "INSURANCE", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(normalized, "SELECT INSURER", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(normalized, "SELECT ITEMS", StringComparison.OrdinalIgnoreCase) ||
@@ -1538,6 +1594,11 @@ namespace AvgSellPrice
             return PluginConfig.EnableValueDisplay != null && !PluginConfig.EnableValueDisplay.Value;
         }
 
+        private static bool ValueAnimationsDisabled()
+        {
+            return PluginConfig.EnableValueAnimations != null && !PluginConfig.EnableValueAnimations.Value;
+        }
+
         private static Color GetThresholdColor(
             int value,
             Color lowColor,
@@ -1545,9 +1606,19 @@ namespace AvgSellPrice
             Color highColor,
             Color maxColor)
         {
-            int mid = PluginConfig.RaidValueMidThreshold.Value;
-            int high = PluginConfig.RaidValueHighThreshold.Value;
-            int max = PluginConfig.RaidValueMaxThreshold.Value;
+            bool useFleaThresholds =
+                PluginConfig.RaidValueThresholdSource != null &&
+                PluginConfig.RaidValueThresholdSource.Value == PriceSource.FleaMarket;
+
+            int mid = useFleaThresholds
+                ? PluginConfig.FleaRaidValueMidThreshold.Value
+                : PluginConfig.TraderSellRaidValueMidThreshold.Value;
+            int high = useFleaThresholds
+                ? PluginConfig.FleaRaidValueHighThreshold.Value
+                : PluginConfig.TraderSellRaidValueHighThreshold.Value;
+            int max = useFleaThresholds
+                ? PluginConfig.FleaRaidValueMaxThreshold.Value
+                : PluginConfig.TraderSellRaidValueMaxThreshold.Value;
 
             if (value <= mid)
             {

@@ -255,6 +255,11 @@ namespace AvgSellPrice
                 return string.Empty;
             }
 
+            if (IsTraderStockItem(item))
+            {
+                return string.Empty;
+            }
+
             if (UseFleaPriceSource && IsKnownNotSellableOnFlea(item))
             {
                 return GetNotSellableOnFleaHoverText(item);
@@ -524,7 +529,14 @@ namespace AvgSellPrice
                 if (totalPrice > 0)
                 {
                     bool showPlates = ShowPlatesBreakdown;
-                    int basePrice = Math.Max(0, totalPrice - platesPrice);
+                    int basePrice = UseFleaPriceSource
+                        ? totalPrice
+                        : Math.Max(0, totalPrice - platesPrice);
+                    if (UseFleaPriceSource)
+                    {
+                        totalPrice = basePrice + platesPrice;
+                    }
+
                     int displayBasePrice = basePrice + (showPlates ? 0 : platesPrice);
                     string traderName = PluginConfig.ShowTraderNameInTooltip.Value && totalOffer != null
                         ? totalOffer.Name
@@ -683,9 +695,14 @@ namespace AvgSellPrice
 
         private static void AddAlwaysFleaBaseLine(List<string> lines, Item item, bool applyMinimum = true)
         {
+            if (UseFleaPriceSource)
+            {
+                AddAlwaysTraderSellBaseLine(lines, item, applyMinimum);
+                return;
+            }
+
             if (lines == null ||
                 item == null ||
-                UseFleaPriceSource ||
                 PluginConfig.AlwaysShowFlea == null ||
                 !PluginConfig.AlwaysShowFlea.Value)
             {
@@ -706,6 +723,30 @@ namespace AvgSellPrice
 
             int price = applyMinimum ? ApplyMinimumPrice(fleaPrice) : fleaPrice;
             lines.Add(Colorize("Flea " + FormatPriceExternal(price), PluginConfig.MainPriceColor.Value));
+        }
+
+        private static void AddAlwaysTraderSellBaseLine(List<string> lines, Item item, bool applyMinimum = true)
+        {
+            if (lines == null ||
+                item == null ||
+                PluginConfig.AlwaysShowTraderSell == null ||
+                !PluginConfig.AlwaysShowTraderSell.Value)
+            {
+                return;
+            }
+
+            TraderOffer traderOffer = GetConfiguredTraderSellOffer(item);
+            if (traderOffer == null || traderOffer.Price <= 0)
+            {
+                return;
+            }
+
+            int price = applyMinimum ? ApplyMinimumPrice(traderOffer.Price) : traderOffer.Price;
+            string label = PluginConfig.ShowTraderNameInTooltip.Value && !string.IsNullOrEmpty(traderOffer.Name)
+                ? traderOffer.Name
+                : "Trader";
+
+            lines.Add(Colorize(label + " " + FormatPriceExternal(price), PluginConfig.MainPriceColor.Value));
         }
 
         private static string FormatMainPriceWithOptionalTrader(string traderName, int rawPrice, bool applyMinimum = true)
@@ -1462,6 +1503,13 @@ namespace AvgSellPrice
                 return basePrice + contentsPrice;
             }
 
+            if (HasHardPlateSlots(item))
+            {
+                int armorPrice = GetSingleItemPrice(item);
+                int platesPrice = GetArmorPlateTraderPrice(item);
+                return armorPrice + platesPrice;
+            }
+
             if (IsMagazine(item))
             {
                 return GetMagazineTotalSellPrice(item);
@@ -1622,6 +1670,13 @@ namespace AvgSellPrice
                 int basePrice = GetContainerBasePriceRobust(item);
                 int contentsPrice = GetEquipmentContentsTraderPrice(item);
                 return basePrice + contentsPrice;
+            }
+
+            if (HasHardPlateSlots(item))
+            {
+                int armorPrice = GetSingleItemPrice(item);
+                int platesPrice = GetArmorPlateTraderPrice(item);
+                return armorPrice + platesPrice;
             }
 
             if (IsMagazine(item))
@@ -3614,6 +3669,13 @@ namespace AvgSellPrice
                 int platesPrice = GetArmorPlateTraderPrice(item);
                 int contentsPrice = GetContentsTraderPrice(item);
                 return rigPrice + platesPrice + contentsPrice;
+            }
+
+            if (HasHardPlateSlots(item))
+            {
+                int armorPrice = GetSingleItemPrice(item);
+                int platesPrice = GetArmorPlateTraderPrice(item);
+                return armorPrice + platesPrice;
             }
 
             if (IsRealContainer(item))

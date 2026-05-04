@@ -13,6 +13,8 @@ namespace AvgSellPrice
             BepInEx.Logging.Logger.CreateLogSource("AvgSellPrice.FleaPriceCache");
 
         private static Dictionary<string, int> _prices = new Dictionary<string, int>();
+        private static Dictionary<string, int> _bestPrices = new Dictionary<string, int>();
+        private static Dictionary<string, int> _averagePrices = new Dictionary<string, int>();
         private static Dictionary<string, bool> _sellable = new Dictionary<string, bool>();
         private static bool _loaded = false;
 
@@ -37,13 +39,18 @@ namespace AvgSellPrice
 
                 var payload = JObject.Parse(json);
                 var prices = new Dictionary<string, int>();
+                var bestPrices = new Dictionary<string, int>();
+                var averagePrices = new Dictionary<string, int>();
                 var sellable = new Dictionary<string, bool>();
 
                 foreach (var property in payload.Properties())
                 {
                     if (property.Value.Type == JTokenType.Integer)
                     {
-                        prices[property.Name] = property.Value.Value<int>();
+                        int legacyPrice = property.Value.Value<int>();
+                        prices[property.Name] = legacyPrice;
+                        bestPrices[property.Name] = legacyPrice;
+                        averagePrices[property.Name] = legacyPrice;
                         sellable[property.Name] = true;
                         continue;
                     }
@@ -54,11 +61,15 @@ namespace AvgSellPrice
                     }
 
                     int price = property.Value["price"]?.Value<int>() ?? property.Value["Price"]?.Value<int>() ?? 0;
+                    int bestPrice = property.Value["bestPrice"]?.Value<int>() ?? property.Value["BestPrice"]?.Value<int>() ?? price;
+                    int averagePrice = property.Value["averagePrice"]?.Value<int>() ?? property.Value["AveragePrice"]?.Value<int>() ?? price;
                     bool canSell = property.Value["sellable"]?.Value<bool>() ?? property.Value["Sellable"]?.Value<bool>() ?? true;
 
                     if (price > 0)
                     {
                         prices[property.Name] = price;
+                        bestPrices[property.Name] = bestPrice > 0 ? bestPrice : price;
+                        averagePrices[property.Name] = averagePrice > 0 ? averagePrice : price;
                         sellable[property.Name] = canSell;
                     }
                 }
@@ -70,6 +81,8 @@ namespace AvgSellPrice
                 }
 
                 _prices = prices;
+                _bestPrices = bestPrices;
+                _averagePrices = averagePrices;
                 _sellable = sellable;
                 _loaded = true;
 
@@ -86,6 +99,16 @@ namespace AvgSellPrice
             if (!_loaded || string.IsNullOrEmpty(templateId))
             {
                 return 0;
+            }
+
+            Dictionary<string, int> selectedPrices =
+                PluginConfig.ContainerPriceMode != null && PluginConfig.ContainerPriceMode.Value == PriceMode.Best
+                    ? _bestPrices
+                    : _averagePrices;
+
+            if (selectedPrices.TryGetValue(templateId, out int selectedPrice) && selectedPrice > 0)
+            {
+                return selectedPrice;
             }
 
             _prices.TryGetValue(templateId, out int price);

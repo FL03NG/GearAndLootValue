@@ -30,7 +30,7 @@ namespace AvgSellPrice
                     return;
                 }
 
-                Harmony harmony = new Harmony("com.simon.approxsellprice.gridtooltip");
+                Harmony harmony = new Harmony("com.fl03ng.approxsellprice.gridtooltip");
 
                 harmony.Patch(
                     method,

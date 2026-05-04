@@ -35,12 +35,14 @@ namespace AvgSellPrice
         public static ConfigEntry<bool> ShowMagazinePrice;
         public static ConfigEntry<bool> ShowWeaponAttachmentsPrice;
         public static ConfigEntry<bool> EnableValueDisplay;
+        public static ConfigEntry<bool> EnableValueAnimations;
         public static ConfigEntry<PriceSource> EquipmentValuePriceSource;
         public static ConfigEntry<bool> ShowEquipmentValue;
         public static ConfigEntry<bool> ShowRaidLootValue;
         public static ConfigEntry<bool> ShowAmmoPrice;
         public static ConfigEntry<bool> ShowCasePrice;
         public static ConfigEntry<bool> AlwaysShowFlea;
+        public static ConfigEntry<bool> AlwaysShowTraderSell;
         public static ConfigEntry<bool> EnableHoverColors;
         public static ConfigEntry<Color> MainPriceColor;
         public static ConfigEntry<Color> AmmoPriceColor;
@@ -56,9 +58,13 @@ namespace AvgSellPrice
         public static ConfigEntry<Color> RaidValueHighColor;
         public static ConfigEntry<Color> RaidValueMaxColor;
 
-        public static ConfigEntry<int> RaidValueMidThreshold;
-        public static ConfigEntry<int> RaidValueHighThreshold;
-        public static ConfigEntry<int> RaidValueMaxThreshold;
+        public static ConfigEntry<PriceSource> RaidValueThresholdSource;
+        public static ConfigEntry<int> TraderSellRaidValueMidThreshold;
+        public static ConfigEntry<int> TraderSellRaidValueHighThreshold;
+        public static ConfigEntry<int> TraderSellRaidValueMaxThreshold;
+        public static ConfigEntry<int> FleaRaidValueMidThreshold;
+        public static ConfigEntry<int> FleaRaidValueHighThreshold;
+        public static ConfigEntry<int> FleaRaidValueMaxThreshold;
         public static ConfigEntry<bool> DebugLogging;
 
 
@@ -68,107 +74,127 @@ namespace AvgSellPrice
         {
             EnablePrice = config.Bind(
                 "1. Price",
-                "00. EnablePrice",
+                "00. Enable Price",
                 true,
                 "Enable item price hover text."
             );
 
             ItemPriceSource = config.Bind(
                 "1. Price",
-                "01. ItemPriceSource",
+                "01. Item Price Source",
                 PriceSource.TraderSell,
                 "Choose whether item values use trader sell prices or flea market prices."
             );
 
             ContainerPriceMode = config.Bind(
                 "1. Price",
-                "02. ContainerPriceMode",
+                "02. Container Price Mode",
                 PriceMode.Best,
                 "Choose how container/contents prices are selected. With flea prices, Average uses the average of the cheapest live flea offers."
             );
+            ContainerPriceMode.SettingChanged += (_, __) =>
+            {
+                ItemExtensions.ClearPriceCacheSafe();
+                ValueDisplayUI.RequestAllValueRefresh(0f);
+                ValueDisplayUI.RequestAllValueRefresh(0.1f);
+            };
 
             MinimumDisplayPrice = config.Bind(
                 "1. Price",
-                "03. ShowMinimumPrice",
+                "03. Show Minimum Price",
                 0,
                 "If greater than 0, any positive price below this value will be displayed as this minimum instead."
             );
 
             PrecisePrice = config.Bind(
                 "1. Price",
-                "04. PrecisePrice",
+                "04. Precise Price",
                 false,
                 "Show full exact price instead of shortened values like 13k / 1.2m."
             );
 
             ShowTraderNameInTooltip = config.Bind(
                 "1. Price",
-                "05. ShowTraderNameInTooltip",
+                "05. Show Trader Name In Hover Text",
                 true,
-                "Show trader name in tooltip text."
+                "Show trader name in hover text."
             );
 
             ShowContentsPrice = config.Bind(
                 "1. Price",
-                "06. ShowContentsPrice",
+                "06. Show Contents Price",
                 true,
                 "Show container/rig contents price lines and include contents in total."
             );
 
             ShowPlatesPrice = config.Bind(
                 "1. Price",
-                "07. ShowPlatesPrice",
+                "07. Show Plates Price",
                 true,
                 "Show armor plate price lines. If disabled, plate value is folded into base price."
             );
 
             ShowMagazinePrice = config.Bind(
                 "1. Price",
-                "08. ShowMagazinePrice",
+                "08. Show Magazine Price",
                 true,
                 "Show weapon magazine price lines. If disabled, magazine value is folded into base price."
             );
 
             ShowWeaponAttachmentsPrice = config.Bind(
                 "1. Price",
-                "09. ShowWeaponAttachmentsPrice",
+                "09. Show Weapon Attachments Price",
                 true,
-                "Show weapon attachment price breakdown in weapon tooltips."
+                "Show weapon attachment price breakdown in weapon hover text."
             );
 
             ShowAmmoPrice = config.Bind(
                 "1. Price",
-                "10. ShowAmmoPrice",
+                "10. Show Ammo Price",
                 true,
-                "Show ammo price in ammo and magazine tooltips."
+                "Show ammo price in ammo and magazine hover text."
             );
 
             ShowCasePrice = config.Bind(
                 "1. Price",
-                "11. ShowCasePrice",
+                "11. Show Case Price",
                 true,
-                "Show case and container value tooltips."
+                "Show case and container value hover text."
             );
 
             AlwaysShowFlea = config.Bind(
                 "1. Price",
-                "12. AlwaysShowFlea",
+                "12. Always Show Flea",
                 false,
-                "When ItemPriceSource is TraderSell, also show the flea base price above the base/trader price line."
+                "When Item Price Source is Trader Sell, also show the flea base price above the base/trader price line."
+            );
+
+            AlwaysShowTraderSell = config.Bind(
+                "1. Price",
+                "13. Always Show Trader Sell",
+                false,
+                "When Item Price Source is Flea Market, also show the trader sell price above the flea price line."
             );
 
             EnableValueDisplay = config.Bind(
                 "2. Equipment / Raid Value",
-                "0. EnableEquipmentAndRaidValue",
+                "00. Enable Equipment And Raid Value",
                 true,
                 "Enable equipment value, raid loot value and raid end loot value displays."
             );
 
+            EnableValueAnimations = config.Bind(
+                "2. Equipment / Raid Value",
+                "01. Enable Value Animations",
+                true,
+                "Animate equipment value, raid loot value and raid end loot value changes."
+            );
+
             EquipmentValuePriceSource = config.Bind(
                 "2. Equipment / Raid Value",
-                "EquipmentValuePriceSource",
+                "02. Equipment Value Price Source",
                 PriceSource.TraderSell,
-                "Choose whether equipment value uses trader sell prices or flea market prices. Hover prices and raid loot still use ItemPriceSource."
+                "Choose whether equipment value uses trader sell prices or flea market prices. Hover prices and raid loot still use Item Price Source."
             );
             EquipmentValuePriceSource.SettingChanged += (_, __) =>
             {
@@ -178,133 +204,161 @@ namespace AvgSellPrice
 
             ShowEquipmentValue = config.Bind(
                 "2. Equipment / Raid Value",
-                "ShowEquipmentValue",
+                "03. Show Equipment Value",
                 true,
                 "Show equipment value outside raids."
             );
 
             ShowRaidLootValue = config.Bind(
                 "2. Equipment / Raid Value",
-                "ShowRaidLootValue",
+                "04. Show Raid Loot Value",
                 true,
                 "Show loot value during raids."
             );
 
             EnableHoverColors = config.Bind(
                 "3. Hover Colors",
-                "0. EnableHoverColors",
+                "00. Enable Hover Colors",
                 true,
                 "Enable colored hover price lines."
             );
 
             NotSellableOnFleaColor = config.Bind(
                 "3. Hover Colors",
-                "1. NotSellableOnFleaColor",
+                "01. Not Sellable On Flea Color",
                 Color.red,
                 "Color for the 'Not sellable on flea' warning line."
             );
 
             MainPriceColor = config.Bind(
                 "3. Hover Colors",
-                "2. MainPriceColor",
+                "02. Main Price Color",
                 Color.white,
                 "Color for the main/base price line."
             );
 
             PlatesPriceColor = config.Bind(
                 "3. Hover Colors",
-                "3. PlatesPriceColor",
+                "03. Plates Price Color",
                 DesiredPlatesColor,
                 "Color for the plates price line."
             );
 
             MagazinePriceColor = config.Bind(
                 "3. Hover Colors",
-                "4. MagazinePriceColor",
+                "04. Magazine Price Color",
                 DesiredPlatesColor,
                 "Color for the weapon magazine price line."
             );
 
             ContentsPriceColor = config.Bind(
                 "3. Hover Colors",
-                "5. ContentsPriceColor",
+                "05. Contents Price Color",
                 new Color(0.56f, 0.83f, 1f, 1f),
                 "Color for the contents price line."
             );
 
             AttachmentsPriceColor = config.Bind(
                 "3. Hover Colors",
-                "6. AttachmentsPriceColor",
+                "06. Attachments Price Color",
                 new Color(0.56f, 0.83f, 1f, 1f),
                 "Color for the weapon attachments price line."
             );
 
             AmmoPriceColor = config.Bind(
                 "3. Hover Colors",
-                "7. AmmoPriceColor",
+                "07. Ammo Price Color",
                 new Color(0.56f, 0.83f, 1f, 1f),
                 "Color for the ammo price line inside magazines."
             );
 
             TotalPriceColor = config.Bind(
                 "3. Hover Colors",
-                "8. TotalPriceColor",
+                "08. Total Price Color",
                 DesiredTotalColor,
                 "Color for the total price line."
             );
 
             RaidValueLowColor = config.Bind(
                 "2. Equipment / Raid Value",
-                "1. RaidValueLowColor",
+                "05. Raid Value Low Color",
                 Color.white,
                 "Starting color for raid loot value."
             );
 
             RaidValueMidColor = config.Bind(
                 "2. Equipment / Raid Value",
-                "2. RaidValueMidColor",
+                "06. Raid Value Mid Color",
                 Color.yellow,
                 "Mid color for raid loot value."
             );
 
             RaidValueHighColor = config.Bind(
                 "2. Equipment / Raid Value",
-                "3. RaidValueHighColor",
+                "07. Raid Value High Color",
                 new Color(1f, 0.55f, 0f, 1f),
                 "High color for raid loot value."
             );
 
             RaidValueMaxColor = config.Bind(
                 "2. Equipment / Raid Value",
-                "4. RaidValueMaxColor",
+                "08. Raid Value Max Color",
                 Color.red,
                 "Max color for raid loot value."
             );
 
-            RaidValueMidThreshold = config.Bind(
+            RaidValueThresholdSource = config.Bind(
                 "2. Equipment / Raid Value",
-                "5. MidThreshold",
+                "09. Value Threshold Source",
+                PriceSource.TraderSell,
+                "Choose which threshold set controls equipment and raid value colors."
+            );
+
+            TraderSellRaidValueMidThreshold = config.Bind(
+                "2. Equipment / Raid Value",
+                "10. Trader Sell Mid Threshold",
                 250000,
-                "Raid loot value where text reaches yellow."
+                "Trader sell value where text reaches yellow."
             );
 
-            RaidValueHighThreshold = config.Bind(
+            TraderSellRaidValueHighThreshold = config.Bind(
                 "2. Equipment / Raid Value",
-                "6. HighThreshold",
+                "11. Trader Sell High Threshold",
                 500000,
-                "Raid loot value where text reaches orange."
+                "Trader sell value where text reaches orange."
             );
 
-            RaidValueMaxThreshold = config.Bind(
+            TraderSellRaidValueMaxThreshold = config.Bind(
                 "2. Equipment / Raid Value",
-                "7. MaxThreshold",
+                "12. Trader Sell Max Threshold",
                 1000000,
-                "Raid loot value where text reaches red."
+                "Trader sell value where text reaches red."
+            );
+
+            FleaRaidValueMidThreshold = config.Bind(
+                "2. Equipment / Raid Value",
+                "13. Flea Mid Threshold",
+                400000,
+                "Flea market value where text reaches yellow."
+            );
+
+            FleaRaidValueHighThreshold = config.Bind(
+                "2. Equipment / Raid Value",
+                "14. Flea High Threshold",
+                1500000,
+                "Flea market value where text reaches orange."
+            );
+
+            FleaRaidValueMaxThreshold = config.Bind(
+                "2. Equipment / Raid Value",
+                "15. Flea Max Threshold",
+                3000000,
+                "Flea market value where text reaches red."
             );
 
             DebugLogging = config.Bind(
                 "5. Debug",
-                "DebugLogging",
+                "Debug Logging",
                 false,
                 "Enable verbose diagnostic logs. Keep disabled during normal raids."
             );
