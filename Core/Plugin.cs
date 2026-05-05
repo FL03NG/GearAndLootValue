@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace GearAndLootValue
 {
-    [BepInPlugin("com.fl03ng.gearandlootvalue", "Gear & Loot Value", "1.0.0")]
+    [BepInPlugin("com.fl03ng.gearandlootvalue", "FL03NG-GearLootValue", "1.0.0")]
     public class Plugin : BaseUnityPlugin
     {
         internal static BepInEx.Logging.ManualLogSource Log;
