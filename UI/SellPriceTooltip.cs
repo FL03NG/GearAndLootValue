@@ -130,11 +130,6 @@ namespace GearAndLootValue
                 return string.Empty;
             }
 
-            if (IsTraderStockItem(item))
-            {
-                return string.Empty;
-            }
-
             if (UseFleaPriceSource && CannotSellOnFlea(item))
             {
                 return NotSellableFleaText(item);
