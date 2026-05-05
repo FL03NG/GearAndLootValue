@@ -36,8 +36,11 @@ namespace GearAndLootValue
         public static ConfigEntry<bool> EnableValueDisplay;
         public static ConfigEntry<bool> EnableValueAnimations;
         public static ConfigEntry<PriceSource> EquipmentValuePriceSource;
+        public static ConfigEntry<PriceSource> RaidLootValuePriceSource;
         public static ConfigEntry<bool> ShowEquipmentValue;
         public static ConfigEntry<bool> ShowRaidLootValue;
+        public static ConfigEntry<bool> ShowEquipmentValueText;
+        public static ConfigEntry<bool> ShowRaidLootValueText;
         public static ConfigEntry<bool> ShowAmmoPrice;
         public static ConfigEntry<bool> ShowCasePrice;
         public static ConfigEntry<bool> AlwaysShowFlea;
@@ -193,7 +196,7 @@ namespace GearAndLootValue
                 "2. Equipment / Raid Value",
                 "02. Equipment Value Price Source",
                 PriceSource.TraderSell,
-                "Choose whether equipment value uses trader sell prices or flea market prices. Hover prices and raid loot still use Item Price Source."
+                "Choose whether equipment value uses trader sell prices or flea market prices."
             );
             EquipmentValuePriceSource.SettingChanged += (_, __) =>
             {
@@ -201,19 +204,46 @@ namespace GearAndLootValue
                 ValueDisplayUI.RequestEquipmentValueRefresh(0.1f);
             };
 
-            ShowEquipmentValue = config.Bind(
+                        RaidLootValuePriceSource = config.Bind(
                 "2. Equipment / Raid Value",
-                "03. Show Equipment Value",
+                "03. Raid Loot Price Source",
+                ItemPriceSource != null ? ItemPriceSource.Value : PriceSource.TraderSell,
+                "Choose whether raid loot value uses trader sell prices or flea market prices."
+            );
+            RaidLootValuePriceSource.SettingChanged += (_, __) =>
+            {
+                ValueTracker.RebuildRaidLootValueFromInventory();
+                ValueDisplayUI.RequestRaidValueTextRefresh();
+            };
+ShowEquipmentValue = config.Bind(
+                "2. Equipment / Raid Value",
+                "04. Show Equipment Value",
                 true,
                 "Show equipment value outside raids."
             );
 
             ShowRaidLootValue = config.Bind(
                 "2. Equipment / Raid Value",
-                "04. Show Raid Loot Value",
+                "05. Show Raid Loot Value",
                 true,
                 "Show loot value during raids."
             );
+
+            ShowEquipmentValueText = config.Bind(
+                "2. Equipment / Raid Value",
+                "04a. Show Equipment Value Text",
+                true,
+                "Show the Equipment Value label text before the money amount."
+            );
+            ShowEquipmentValueText.SettingChanged += (_, __) => ValueDisplayUI.RequestEquipmentValueRefresh(0f);
+
+            ShowRaidLootValueText = config.Bind(
+                "2. Equipment / Raid Value",
+                "05a. Show Raid Loot Value Text",
+                true,
+                "Show the Loot Value label text before the money amount."
+            );
+            ShowRaidLootValueText.SettingChanged += (_, __) => ValueDisplayUI.RequestRaidValueTextRefresh();
 
             EnableHoverColors = config.Bind(
                 "3. Hover Colors",

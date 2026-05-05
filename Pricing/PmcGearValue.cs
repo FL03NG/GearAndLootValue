@@ -234,7 +234,19 @@ namespace GearAndLootValue
                 return 0;
             }
 
-            return GetTotalSellValue(item);
+            PriceSource? previousPriceSource = _priceSourceOverride;
+            _priceSourceOverride = PluginConfig.RaidLootValuePriceSource != null
+                ? PluginConfig.RaidLootValuePriceSource.Value
+                : ActiveSource();
+
+            try
+            {
+                return GetTotalSellValue(item);
+            }
+            finally
+            {
+                _priceSourceOverride = previousPriceSource;
+            }
         }
 
         internal static bool HasValuePanelContents(Item item)

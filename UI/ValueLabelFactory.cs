@@ -51,7 +51,7 @@ namespace GearAndLootValue
             label.enableAutoSizing = false;
             label.enableWordWrapping = false;
             label.overflowMode = TextOverflowModes.Overflow;
-            label.alignment = TextAlignmentOptions.MidlineLeft;
+            label.alignment = TextAlignmentOptions.Midline;
             label.raycastTarget = false;
             label.fontStyle = FontStyles.Normal;
 
@@ -117,7 +117,7 @@ namespace GearAndLootValue
             label.enableAutoSizing = false;
             label.enableWordWrapping = false;
             label.overflowMode = TextOverflowModes.Overflow;
-            label.alignment = TextAlignmentOptions.MidlineLeft;
+            label.alignment = TextAlignmentOptions.Midline;
             label.raycastTarget = false;
             label.fontStyle = FontStyles.Normal;
         }

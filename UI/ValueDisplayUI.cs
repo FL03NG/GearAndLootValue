@@ -812,7 +812,8 @@ namespace GearAndLootValue
                 return;
             }
 
-            _equipmentLabel.text = $"Equipment Value: <b>{TarkovItemPrices.FormatMoneyUi(value)} ₽</b>";
+            string prefix = PluginConfig.ShowEquipmentValueText == null || PluginConfig.ShowEquipmentValueText.Value ? "Equipment Value: " : string.Empty;
+            _equipmentLabel.text = $"{prefix}<b>{TarkovItemPrices.FormatMoneyUi(value)} ₽</b>";
             _equipmentLabel.color = new Color(0.92f, 0.92f, 0.93f, 1f);
         }
 
@@ -823,7 +824,8 @@ namespace GearAndLootValue
                 return;
             }
 
-            _raidLabel.text = $"Loot Value: <b>{TarkovItemPrices.FormatMoneyUi(value)} ₽</b>";
+            string prefix = PluginConfig.ShowRaidLootValueText == null || PluginConfig.ShowRaidLootValueText.Value ? "Loot Value: " : string.Empty;
+            _raidLabel.text = $"{prefix}<b>{TarkovItemPrices.FormatMoneyUi(value)} ₽</b>";
             _raidLabel.color = GetRaidValueColor(value);
         }
 
