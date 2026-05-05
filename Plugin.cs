@@ -5,9 +5,9 @@ using SPT.Reflection.Patching;
 using System.Reflection;
 using UnityEngine;
 
-namespace AvgSellPrice
+namespace GearAndLootValue
 {
-    [BepInPlugin("com.fl03ng.approxsellprice", "Approx Sell Price", "3.6.1")]
+    [BepInPlugin("com.fl03ng.gearandlootvalue", "Gear & Loot Value", "1.0.0")]
     public class Plugin : BaseUnityPlugin
     {
         internal static BepInEx.Logging.ManualLogSource Log;
@@ -36,7 +36,7 @@ namespace AvgSellPrice
         private void Awake()
         {
             Log = Logger;
-            Log.LogInfo("Approx Sell Price Awake START");
+            Log.LogInfo("Gear & Loot Value Awake START");
 
             VerifiedArmoredRigPriceCache.Load();
             Log.LogInfo("VerifiedArmoredRigPriceCache.Load called");
@@ -110,7 +110,7 @@ namespace AvgSellPrice
         [PatchPostfix]
         private static void PatchPostfix(TraderClass __instance)
         {
-            __instance.UpdateSupplyDataSafe();
+            __instance.RefreshTraderSupplyData();
         }
     }
 

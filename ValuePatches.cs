@@ -7,7 +7,7 @@ using System;
 using System.Linq;
 using System.Reflection;
 
-namespace AvgSellPrice
+namespace GearAndLootValue
 {
     internal static class RaidPlayerState
     {

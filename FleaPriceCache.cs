@@ -4,13 +4,13 @@ using Newtonsoft.Json.Linq;
 using SPT.Common.Http;
 using System;
 using System.Collections.Generic;
-
-namespace AvgSellPrice
+using static GearAndLootValue.ContainerPricing;
+namespace GearAndLootValue
 {
     internal static class FleaPriceCache
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("AvgSellPrice.FleaPriceCache");
+            BepInEx.Logging.Logger.CreateLogSource("GearAndLootValue.FleaPriceCache");
 
         private static Dictionary<string, int> _prices = new Dictionary<string, int>();
         private static Dictionary<string, int> _bestPrices = new Dictionary<string, int>();
@@ -33,7 +33,7 @@ namespace AvgSellPrice
 
                 if (string.IsNullOrEmpty(json))
                 {
-                    Log.LogWarning("[AvgSellPrice] Server mod returned empty flea response");
+                    Log.LogWarning("[Gear & Loot Value] Server mod returned empty flea response");
                     return;
                 }
 
@@ -76,7 +76,7 @@ namespace AvgSellPrice
 
                 if (prices.Count == 0)
                 {
-                    Log.LogWarning("[AvgSellPrice] No flea prices received from server mod");
+                    Log.LogWarning("[Gear & Loot Value] No flea prices received from server mod");
                     return;
                 }
 
@@ -86,11 +86,11 @@ namespace AvgSellPrice
                 _sellable = sellable;
                 _loaded = true;
 
-                Log.LogInfo($"[AvgSellPrice] Loaded {_prices.Count} flea prices from server mod");
+                Log.LogInfo($"[Gear & Loot Value] Loaded {_prices.Count} flea prices from server mod");
             }
             catch (Exception ex)
             {
-                Log.LogError($"[AvgSellPrice] Failed to load flea prices from server mod: {ex.Message}");
+                Log.LogError($"[Gear & Loot Value] Failed to load flea prices from server mod: {ex.Message}");
             }
         }
 

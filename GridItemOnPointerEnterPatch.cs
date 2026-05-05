@@ -1,9 +1,9 @@
-﻿using EFT.UI.DragAndDrop;
+using EFT.UI.DragAndDrop;
 using SPT.Reflection.Patching;
 using System.Reflection;
 using UnityEngine.EventSystems;
 
-namespace AvgSellPrice
+namespace GearAndLootValue
 {
     internal class GridItemOnPointerEnterPatch : ModulePatch
     {

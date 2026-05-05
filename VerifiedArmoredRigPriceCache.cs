@@ -3,8 +3,8 @@ using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
-
-namespace AvgSellPrice
+using static GearAndLootValue.ContainerPricing;
+namespace GearAndLootValue
 {
     internal static class VerifiedArmoredRigPriceCache
     {
@@ -18,7 +18,7 @@ namespace AvgSellPrice
             {
                 string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
                 string configDirectory = Path.Combine(baseDirectory, "BepInEx", "config");
-                return Path.Combine(configDirectory, "AvgSellPrice.VerifiedArmoredRigPrices.v3.json");
+                return Path.Combine(configDirectory, "GearAndLootValue.VerifiedArmoredRigPrices.v3.json");
             }
         }
 

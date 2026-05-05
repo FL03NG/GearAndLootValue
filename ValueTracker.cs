@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace AvgSellPrice
+namespace GearAndLootValue
 {
     internal static class ValueTracker
     {
@@ -47,7 +47,7 @@ namespace AvgSellPrice
                 return;
             }
 
-            foreach (Item item in ItemExtensions.GetAllPlayerItemsSafe())
+            foreach (Item item in InventoryScraper.ScrapeInventoryItems())
             {
                 if (item == null || string.IsNullOrEmpty(item.Id))
                 {
@@ -86,17 +86,6 @@ namespace AvgSellPrice
             RemoveLootItemTree(rootItem);
         }
 
-        public static void ReconcileItemTree(Item rootItem)
-        {
-            if (!ShouldTrackRaidLoot() || rootItem == null)
-            {
-                return;
-            }
-
-            RemoveLootItemTree(rootItem);
-            AddLootItemTree(rootItem);
-        }
-
         public static void RebuildRaidLootValueFromInventory()
         {
             if (!ShouldTrackRaidLoot())
@@ -107,7 +96,7 @@ namespace AvgSellPrice
             CountedLootValuesByItemId.Clear();
             CurrentRaidLootValue = 0;
 
-            List<Item> currentItems = ItemExtensions.GetAllPlayerItemsSafe();
+            List<Item> currentItems = InventoryScraper.ScrapeInventoryItems();
             if (currentItems.Count == 0)
             {
                 return;
@@ -119,34 +108,17 @@ namespace AvgSellPrice
                 .Where(item => !BaselineItemIds.Contains(item.Id))
                 .ToList();
 
-            foreach (Item rootItem in ItemExtensions.GetRootItems(newItems))
+            foreach (Item rootItem in PmcGearValue.OnlyTopLevelItems(newItems))
             {
                 if (rootItem == null || string.IsNullOrEmpty(rootItem.Id))
                 {
                     continue;
                 }
 
-                int value = ItemExtensions.GetConfiguredRaidLootRootValue(rootItem);
+                int value = PmcGearValue.RaidLootRootValue(rootItem);
                 MarkLootItemTree(rootItem, rootItem.Id, value);
                 CurrentRaidLootValue = Math.Max(0, CurrentRaidLootValue + Math.Max(0, value));
             }
-        }
-
-        public static void RefreshRaidLootValue()
-        {
-            if (!IsInRaid)
-            {
-                CurrentRaidLootValue = 0;
-                return;
-            }
-
-            int total = 0;
-            foreach (LootValueEntry entry in CountedLootValuesByItemId.Values)
-            {
-                total += entry.Value;
-            }
-
-            CurrentRaidLootValue = Math.Max(0, total);
         }
 
         private static void AddLootItemTree(Item rootItem)
@@ -164,7 +136,7 @@ namespace AvgSellPrice
                 return;
             }
 
-            int value = ItemExtensions.GetConfiguredRaidLootRootValue(rootItem);
+            int value = PmcGearValue.RaidLootRootValue(rootItem);
             MarkLootItemTree(rootItem, rootId, value);
             CurrentRaidLootValue = Math.Max(0, CurrentRaidLootValue + Math.Max(0, value));
         }
@@ -176,7 +148,7 @@ namespace AvgSellPrice
                 return;
             }
 
-            foreach (Item item in ItemExtensions.GetItemTreeSafe(rootItem))
+            foreach (Item item in PmcGearValue.ItemTree(rootItem))
             {
                 if (item == null || string.IsNullOrEmpty(item.Id))
                 {
@@ -194,7 +166,7 @@ namespace AvgSellPrice
 
         private static void MarkLootItemTree(Item rootItem, string ownerId, int ownerValue)
         {
-            foreach (Item item in ItemExtensions.GetItemTreeSafe(rootItem))
+            foreach (Item item in PmcGearValue.ItemTree(rootItem))
             {
                 if (item == null || string.IsNullOrEmpty(item.Id))
                 {
@@ -222,7 +194,7 @@ namespace AvgSellPrice
         {
             BaselineItemIds.Clear();
 
-            foreach (Item item in ItemExtensions.GetAllPlayerItemsSafe())
+            foreach (Item item in InventoryScraper.ScrapeInventoryItems())
             {
                 if (item == null || string.IsNullOrEmpty(item.Id))
                 {

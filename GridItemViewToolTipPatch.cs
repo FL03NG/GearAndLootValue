@@ -1,4 +1,4 @@
-﻿using BepInEx.Logging;
+using BepInEx.Logging;
 using EFT.InventoryLogic;
 using EFT.UI;
 using EFT.UI.DragAndDrop;
@@ -8,12 +8,12 @@ using System.Reflection;
 
 
 
-namespace AvgSellPrice
+namespace GearAndLootValue
 {
     internal class GridItemViewTooltipPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("AvgSellPrice.GridTooltip");
+            BepInEx.Logging.Logger.CreateLogSource("GearAndLootValue.GridTooltip");
 
         public void Enable()
         {
@@ -30,7 +30,7 @@ namespace AvgSellPrice
                     return;
                 }
 
-                Harmony harmony = new Harmony("com.fl03ng.approxsellprice.gridtooltip");
+                Harmony harmony = new Harmony("com.fl03ng.gearandlootvalue.gridtooltip");
 
                 harmony.Patch(
                     method,
@@ -78,7 +78,7 @@ namespace AvgSellPrice
                 Item item = __instance.Item;
 
                 Plugin.LogDebug(
-                    $"[AvgSellPrice] Tooltip owner type: ownerType={item.Owner?.OwnerType.ToString() ?? "NULL"} class={item.Owner?.GetType().Name ?? "NULL"}");
+                    $"[Gear & Loot Value] Hover owner type: ownerType={item.Owner?.OwnerType.ToString() ?? "NULL"} class={item.Owner?.GetType().Name ?? "NULL"}");
 
 
                 string priceBlock = item.GetHoverPriceText();

@@ -3,27 +3,19 @@ using Newtonsoft.Json;
 using SPT.Common.Http;
 using System;
 using System.Collections.Generic;
-
-namespace AvgSellPrice
+using static GearAndLootValue.ContainerPricing;
+namespace GearAndLootValue
 {
-    /// <summary>
-    /// Henter trader buy-priser fra server mod ved opstart.
-    /// Bruges som primær kilde til container base-priser.
-    /// </summary>
     internal static class TraderPriceCache
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("AvgSellPrice.TraderPriceCache");
+            BepInEx.Logging.Logger.CreateLogSource("GearAndLootValue.TraderPriceCache");
 
-        // templateId -> bedste trader buy-pris i rubler
         private static Dictionary<string, int> _prices = new Dictionary<string, int>();
         private static bool _loaded = false;
 
         public static bool IsLoaded => _loaded;
 
-        /// <summary>
-        /// Henter priser fra server mod. Kaldes én gang ved opstart.
-        /// </summary>
         public static void Load()
         {
             try
@@ -32,7 +24,7 @@ namespace AvgSellPrice
 
                 if (string.IsNullOrEmpty(json))
                 {
-                    Log.LogWarning("[AvgSellPrice] Server mod returnerede tom respons — er AvgSellPrice.Server.dll installeret?");
+                    Log.LogWarning("[AvgSellPrice] Server mod returnerede tom respons — er GearAndLootValue.Server.dll installeret?");
                     return;
                 }
 
@@ -55,10 +47,6 @@ namespace AvgSellPrice
             }
         }
 
-        /// <summary>
-        /// Returnerer den bedste trader buy-pris for et template ID.
-        /// Returnerer 0 hvis ikke fundet.
-        /// </summary>
         public static int GetPrice(string templateId)
         {
             if (!_loaded || string.IsNullOrEmpty(templateId))

@@ -1,4 +1,4 @@
-﻿using EFT;
+using EFT;
 using EFT.InventoryLogic;
 using EFT.UI;
 using SPT.Reflection.Patching;
@@ -7,7 +7,7 @@ using System.Linq;
 using System.Reflection;
 using UnityEngine;
 
-namespace AvgSellPrice
+namespace GearAndLootValue
 {
     internal class SimpleTooltipShowPatch : ModulePatch
     {

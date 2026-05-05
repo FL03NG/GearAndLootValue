@@ -1,10 +1,10 @@
-﻿using BepInEx;
+using BepInEx;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
-
-namespace AvgSellPrice
+using static GearAndLootValue.ContainerPricing;
+namespace GearAndLootValue
 {
     internal static class VerifiedContainerPriceCache
     {
@@ -23,7 +23,7 @@ namespace AvgSellPrice
                     Directory.CreateDirectory(configDirectory);
                 }
 
-                return Path.Combine(configDirectory, "AvgSellPrice.VerifiedContainerPrices.json");
+                return Path.Combine(configDirectory, "GearAndLootValue.VerifiedContainerPrices.json");
             }
         }
 

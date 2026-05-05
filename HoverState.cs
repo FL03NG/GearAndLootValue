@@ -1,6 +1,6 @@
-﻿using EFT.InventoryLogic;
+using EFT.InventoryLogic;
 
-namespace AvgSellPrice
+namespace GearAndLootValue
 {
     internal static class HoverState
     {

@@ -4,12 +4,12 @@ using SPT.Common.Http;
 using System;
 using System.Collections.Generic;
 
-namespace AvgSellPrice
+namespace GearAndLootValue
 {
     internal static class WeaponDefaultPresetCache
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("AvgSellPrice.WeaponDefaultPresetCache");
+            BepInEx.Logging.Logger.CreateLogSource("GearAndLootValue.WeaponDefaultPresetCache");
 
         private static Dictionary<string, HashSet<string>> _defaultPartsByWeaponTemplate =
             new Dictionary<string, HashSet<string>>();
@@ -59,17 +59,5 @@ namespace AvgSellPrice
             }
         }
 
-        public static bool IsDefaultPart(string weaponTemplateId, string partTemplateId)
-        {
-            if (!_loaded ||
-                string.IsNullOrEmpty(weaponTemplateId) ||
-                string.IsNullOrEmpty(partTemplateId))
-            {
-                return false;
-            }
-
-            return _defaultPartsByWeaponTemplate.TryGetValue(weaponTemplateId, out HashSet<string> defaultParts) &&
-                   defaultParts.Contains(partTemplateId);
-        }
     }
 }

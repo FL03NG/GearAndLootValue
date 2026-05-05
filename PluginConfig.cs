@@ -1,8 +1,7 @@
-﻿using BepInEx.Configuration;
+using BepInEx.Configuration;
 using UnityEngine;
-
-
-namespace AvgSellPrice
+using static GearAndLootValue.TarkovItemPrices;
+namespace GearAndLootValue
 {
     public enum PriceMode
     {
@@ -94,7 +93,7 @@ namespace AvgSellPrice
             );
             ContainerPriceMode.SettingChanged += (_, __) =>
             {
-                ItemExtensions.ClearPriceCacheSafe();
+                TarkovItemPrices.ClearPriceCache();
                 ValueDisplayUI.RequestAllValueRefresh(0f);
                 ValueDisplayUI.RequestAllValueRefresh(0.1f);
             };
