@@ -7,6 +7,7 @@ namespace GearAndLootValue
 {
     internal static class EftReflection
     {
+        //read a boolean that just says it isEquipped its reading a private field
         internal static bool ReadBoolFlag(object source, string memberName, out bool value)
         {
             value = false;
