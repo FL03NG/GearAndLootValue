@@ -1,3 +1,6 @@
+Github broke and said i made 27 comits at the same time, its more over the span of 1 month.
+
+
 This mod is designed to be lightweight and modular, and to work well with any other mod. 
 It includes a built in price display to support accurate equipment value, loot value, and end of raid calculations, so everything works out of the box without requiring other mods.
 If you prefer another pricing mod or simply don’t want the built in price display, you can disable it in the F12 config.
